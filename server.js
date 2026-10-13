@@ -7,6 +7,7 @@
 //   lib/agents/      adapters per agent (claude.js)
 //   lib/terminal.js  tmux-backed terminal tabs (/ws/tabs/<id>) and files API
 //   lib/slack.js     Slack for the agents (their tools) and its token (/api/slack)
+//   lib/editors.js   open a chat's folder in a code editor on this Mac (/api/open-in)
 //   lib/config.js    settings and shared helpers
 
 import http from 'node:http';
@@ -19,6 +20,7 @@ import { handleTerminalApi, handleTerminalUpgrade, terminalInfo, detachTerminals
 import { power, setPower, keepAwake } from './lib/power.js';
 import { networkInfo } from './lib/network.js';
 import { loadSlack, handleSlackApi } from './lib/slack.js';
+import { editors, handleEditorApi } from './lib/editors.js';
 
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
 const VENDOR = {
@@ -93,7 +95,8 @@ async function handleApi(req, res, url) {
   // this server never grants.
   if (req.method !== 'GET' && req.headers['x-mothership'] !== '1') throw new HttpError(403, 'missing X-Mothership header');
   if (url.pathname === '/api/config' && req.method === 'GET') {
-    return sendJson(res, 200, { ...terminalInfo, home: HOME, hostname: HOSTNAME, thisMac: fromThisMac(req), on: power.on });
+    const thisMac = fromThisMac(req);
+    return sendJson(res, 200, { ...terminalInfo, home: HOME, hostname: HOSTNAME, thisMac, editors: thisMac ? await editors() : [], on: power.on });
   }
   // On / off (lib/power.js): only from a browser on this Mac.
   if ((url.pathname === '/api/turn-off' || url.pathname === '/api/turn-on') && req.method === 'POST') {
@@ -113,6 +116,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/network' && req.method === 'GET') return sendJson(res, 200, await networkInfo());
   if (await handleChatApi(req, res, url)) return;
   if (await handleSlackApi(req, res, url)) return;
+  if (await handleEditorApi(req, res, url)) return;
   if (await handleTerminalApi(req, res, url)) return;
   throw new HttpError(404, 'route not found');
 }

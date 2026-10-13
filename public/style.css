@@ -28,6 +28,22 @@ body.sidebar-collapsed #messages,
 body.sidebar-collapsed .page-view {
   padding-top: calc(64px + env(safe-area-inset-top));
 }
+/* "Open in…" (app.js): top right, in the floating sidebar toggle's look. */
+#open-in {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 5;
+  background: color-mix(in oklab, var(--raised) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+body:not([data-view='chat']) #open-in {
+  display: none;
+}
 
 #messages {
   overflow-y: auto;

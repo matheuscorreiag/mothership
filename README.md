@@ -74,6 +74,9 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
   terminals stay open in tmux. It stays off across restarts and logins until
   turned on. The server process keeps running while off (idle), so the button
   can turn it back on.
+- **Open in VS Code** (the `</>` button at the top right, only in a browser on
+  the Mac itself, when VS Code is installed) — opens the chat's folder, the
+  one in the status line, in the editor.
 - **Share** (the button next to the status dot) — the address to open the
   panel on another device (Chrome on Windows, a phone…), with Copy: the
   `tailscale serve` URL, plus this Mac's Tailscale name and IPs. The server

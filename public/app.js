@@ -30,6 +30,7 @@ const state = {
   agents: [],
   defaultAgent: null,
   home: null,
+  editors: [], // [{ id, name }]: code editors that can open the chat's folder (a browser on this Mac only)
   newAgent: local.get('newAgent', null), // per-chat choices the agent offers, where it starts
   newSettings: { model: null, effort: null, ...local.get('newSettings', {}) }, // for the next new chat
   newDir: null, // where the next new chat starts (a terminal's "New chat in this folder"); null = the agent's folder
@@ -550,16 +551,27 @@ function renderHeader() {
   renderStats();
 }
 
-// The status line's left side: the folder the open chat's agent works in (a
-// new chat: where it will start). The chat itself is the one lit in the sidebar.
+// The folder the open chat's agent works in (a new chat: where it will start).
+const chatDir = () => current()?.cwd || state.newDir || agentOf().cwd;
+
+// The status line's left side: chatDir(). The chat itself is the one lit in the sidebar.
 function renderDir() {
-  const dir = current()?.cwd || state.newDir || agentOf().cwd;
+  const dir = chatDir();
   const el = $('#chat-dir');
   el.title = dir || '';
   // LRM marks keep the slashes in order inside the rtl box, which trims a long
   // path from the left so its last folders stay visible.
   el.textContent = dir ? `\u200e${shortPath(dir)}\u200e` : '';
+  $('#open-in').hidden = !state.editors.length || !dir;
 }
+
+// Top right: chatDir() in a code editor on this Mac.
+$('#open-in').addEventListener('click', (e) =>
+  showMenu(
+    e.currentTarget,
+    state.editors.map((ed) => ({ label: `Open in ${ed.name}`, run: () => api('POST', '/api/open-in', { editor: ed.id, dir: chatDir() }).catch(fail) })),
+  ),
+);
 
 const shortPath = (dir) => {
   const home = state.home;
@@ -1042,6 +1054,8 @@ function checkPower() {
   return api('GET', '/api/config').then((c) => {
     thisMac = c.thisMac;
     $('#turn-off').hidden = !thisMac;
+    state.editors = c.editors || [];
+    renderDir();
     if (c.on === false) showOff();
     else if (c.on && state.off) location.reload(); // turned back on (from another tab)
   }, () => {}); // unreachable (asleep, restarting): the socket keeps retrying

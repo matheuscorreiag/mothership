@@ -57,7 +57,9 @@ Claude even if the default for new chats changes.
   `--dangerously-skip-permissions` on a machine inside the office network.
 - Minimal chrome: no header bar. The sidebar toggle sits at the right end of
   the sidebar's top row when open and floats top-left when closed; the
-  connection status is just a dot next to it. The agent's folder, model and usage live in a status line
+  connection status is just a dot next to it. On this Mac only, a floating
+  button at the top right opens the chat's folder in a code editor (a menu of
+  the editors `lib/editors.js` finds installed; VS Code for now). The agent's folder, model and usage live in a status line
   under the composer — not the chat's name (the owner dropped it; the sidebar
   shows which chat is open).
 - Look: Instrument Sans for text, Martian Mono for labels, code and readouts
@@ -85,6 +87,7 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
 | `lib/agents/claude.js` | **the only Claude-specific code**: CLI args, message encoding, interrupt, event parsing, labels |
 | `lib/agents/index.js` | adapter registry by `agent.type` |
 | `lib/slack.js` | Slack: the owner's token (`/api/slack`), the agents' Slack tools and the rule every send is checked against |
+| `lib/editors.js` | "Open in…": the chat's folder in a code editor on this Mac (`POST /api/open-in`); the editors this Mac has, by bundle id |
 | `lib/mcp-bridge.js` | the stdio MCP server each chat's agent runs: relays `tools/list` / `tools/call` to `/api/agent/tools` with the chat's key |
 | `lib/terminal.js` | tmux tabs + file API (list/read/write/mkdir/rename/trash) + PTY WebSocket |
 | `public/base.css`, `public/ui.js` | **shared by both pages**: fonts, tokens, sidebar, item rows, menus, inline rename, status dot, page tint (`setHue`), accents, `api()`, `h()` |
@@ -352,6 +355,10 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
   `/api/config`): `fromThisMac()` compares the client address — `X-Forwarded-For`, which
   `tailscale serve` overwrites with the client's tailnet IP, or the peer for
   direct localhost requests — with this machine's own interface addresses.
+- **Open in…** (`POST /api/open-in`) runs `open -b <editor> <folder>`, so it
+  too only works from a browser on this Mac (`fromThisMac()`); `/api/config`
+  lists editors only there, and the button shows only when it has some. The
+  folder must be an existing absolute path.
 - The Share popover (the button next to the status dot, `setupShare()` in
   ui.js, both pages) shows the tailnet name, IPs and serve URL, computed at
   runtime — they still never go in tracked files. It flags Tailscale Funnel
