@@ -21,6 +21,9 @@ test('both providers preserve queue, interrupt, attachments, clear and resume ac
   const legacyDir = path.join(temp, 'data/chats/000000000001');
   await fs.mkdir(legacyDir, { recursive: true });
   await fs.writeFile(path.join(legacyDir, 'meta.json'), JSON.stringify({ id: '000000000001', title: 'Legacy', created: 1 }));
+  const goneDir = path.join(temp, 'data/chats/000000000002');
+  await fs.mkdir(goneDir, { recursive: true });
+  await fs.writeFile(path.join(goneDir, 'meta.json'), JSON.stringify({ id: '000000000002', agent: 'claude', title: 'Gone', created: 2, cwd: path.join(temp, 'removed-worktree') }));
   let server, socket, logs = '';
   const messages = [];
   t.after(async () => { socket?.terminate(); if (server?.exitCode === null) { server.kill(); await once(server, 'exit'); } await fs.rm(temp, { recursive: true, force: true }); });
@@ -52,6 +55,9 @@ test('both providers preserve queue, interrupt, attachments, clear and resume ac
   }
   await boot();
   assert.equal((await list()).find((c) => c.id === '000000000001').agent, 'claude');
+  send({ op: 'open', chatId: '000000000002' }); // its folder is gone: back to where it starts
+  for (let i = 0; i < 100 && (await list()).find((c) => c.id === '000000000002').cwd !== temp; i++) await delay(20);
+  assert.equal((await list()).find((c) => c.id === '000000000002').cwd, temp);
   const ids = {};
   for (const agent of ['claude', 'codex']) {
     const id = ids[agent] = await message(agent, 'first');
