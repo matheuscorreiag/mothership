@@ -208,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     chats.representedObject = "/"
     let terminals = item("Terminals", #selector(goTo(_:)), target: self)
     terminals.representedObject = "/terminal/"
-    var go = [page("Latest Reply", "j", code: "KeyJ"), .separator(), page("Chats / Terminal", "t", code: "KeyT"), chats, terminals, .separator()]
+    var go = [page("Latest Reply", "j", code: "KeyJ"), page("Archived Chats", "a", code: "KeyA", [.command, .shift]), .separator(), page("Chats / Terminal", "t", code: "KeyT"), chats, terminals, .separator()]
     // ⌘1…⌘9 (the sidebar's items) work without cluttering the menu.
     for n in 1...9 {
       let item = page("Item \(n)", "\(n)", code: "Digit\(n)")

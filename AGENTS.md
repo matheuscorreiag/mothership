@@ -147,7 +147,7 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   cwd (the agent's folder now; Claude: the last `cwd` stamp in its own
   session log, `~/.claude/projects/*/<sessionId>.jsonl` — the stream only
   reports the starting one), pinned (its place in Pinned, from 1; absent =
-  not pinned), doneAt / readAt. Account-wide usage windows: `~/.mothership/limits.json`, keyed by provider
+  not pinned), archived (since when; absent = in the list), doneAt / readAt. Account-wide usage windows: `~/.mothership/limits.json`, keyed by provider
   (the old unkeyed file migrates to Claude).
 - **Model / effort**: the chat's settings become the adapter's `--model` /
   `--effort` when its process spawns. A process keeps its flags, so changing
@@ -159,6 +159,14 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   It's read when a socket that has the chat open is visible (the page sends
   `{ op: 'visibility' }` on connect and on visibilitychange) — at turn end,
   on `open`, or when the page becomes visible. Shared by every device.
+- **Archived** (`setArchived()`; ⋯ › Archive / Unarchive, `PATCH { archived }`):
+  the chat leaves the sidebar's list, its numbers (⌘1–9) and Pinned, and is
+  never `unread` — so no notice, badge, title count or macOS notification,
+  with no client changes (they all read `unread`). The sidebar foot's
+  Archived button (shown while there are any) or ⇧⌘A swaps the list for the archived
+  ones and back; opening a chat from the list swaps it back. It stays archived
+  (and silent) while it's written in and replies — the owner asked; only
+  Unarchive brings it back, counting what it said meanwhile as read.
 - Images from tool results are saved content-addressed in `~/.mothership/media/`;
   uploads go there too. Attachments are passed to the agent as image blocks
   (png/jpeg/gif/webp) and always also by path.
@@ -331,7 +339,7 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
   Settings › Shortcuts). Chat: ⌘1–9, ⌘B, ⌘J, ⌘K, ⌘/, ⇧⌘E rename, ⇧⌘D delete
   (not ⌘⌫, the Mac's usual delete: in the message box it erases the line;
   not ⇧⌘R, the browser's hard reload), ⇧⌘P pin / unpin (also on the
-  terminal page). Terminal: ⌘1–9, ⌘B, ⌘E
+  terminal page), ⇧⌘A archived chats ↔ the list. Terminal: ⌘1–9, ⌘B, ⌘E
   — off macOS the terminal page uses Ctrl+Shift for B / E because plain
   Ctrl+B/E belong to the shell. 1–9 (the sidebar's items) are the same keys
   on both pages, ⌘1–9 / Ctrl+1–9 (`itemNumber()` / `itemKey()` in ui.js) — the

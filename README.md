@@ -68,6 +68,10 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
   reply that stays 30 s (paused while hovered or while the page is in the
   background) — tap it or press ⌘J to open the chat.
   Opening the chat marks it read on every device.
+- **Archive** (a chat's ⋯ menu) — hides the chat from the list and silences it:
+  no unread dot, notice, badge or notification, whatever it does. The
+  sidebar's Archived button (⇧⌘A) lists archived chats, to open or unarchive
+  them; one stays archived while you write in it, until you unarchive it.
 - **Turn off / Turn on** (only in a browser on the Mac itself: the sidebar's
   Turn off, the "Turned off" screen's Turn on) — off, the Mac can idle-sleep
   again, running chats stop, and every device gets the "Turned off" screen;

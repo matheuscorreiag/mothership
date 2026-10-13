@@ -30,9 +30,17 @@
           <kbd class="hint" id="new-chat-hint"></kbd>
         </button>
       </div>
-      <div class="side-label label"><span>Chats</span><span class="count" id="chat-count"></span></div>
+      <div class="side-label label" id="chats-label"><span>Chats</span><span class="count" id="chat-count"></span></div>
       <nav id="chat-list" class="side-list"></nav>
+      <div class="side-label label" id="archived-label" hidden><span>Archived</span><span class="count" id="archived-count"></span></div>
+      <nav id="archived-list" class="side-list" aria-label="Archived chats" hidden></nav>
       <div class="side-foot">
+        <button id="show-archived" class="side-btn" type="button" aria-pressed="false" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></svg>
+          <span>Archived</span>
+          <span class="side-count" id="archived-total"></span>
+          <kbd class="hint" id="archived-hint"></kbd>
+        </button>
         <button id="open-settings" class="side-btn" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>
           <span>Settings</span>

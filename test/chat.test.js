@@ -122,4 +122,27 @@ test('both providers preserve queue, interrupt, attachments, clear and resume ac
   assert.match((await wait((m) => m.op === 'error' && m.ref === 'invalid', from)).error, /unknown agent/);
   const bad = await fetch(base + `/api/chats/${ids.codex}`, { method: 'PATCH', headers: { 'X-Mothership': '1' }, body: JSON.stringify({ model: 'haiku' }) });
   assert.equal(bad.status, 400);
+
+  // Archived: out of Pinned, never unread (no notices), written in or not, until unarchived.
+  const json = { 'X-Mothership': '1', 'Content-Type': 'application/json' };
+  const chat = async (id) => (await list()).find((c) => c.id === id);
+  const until = async (ok) => { for (let i = 0; i < 400 && !(await ok()); i++) await delay(15); assert(await ok()); };
+  await fetch(base + '/api/chats/pinned', { method: 'PUT', headers: json, body: JSON.stringify({ ids: [ids.claude] }) });
+  send({ op: 'open', chatId: null });
+  const archive = (archived) => fetch(base + `/api/chats/${ids.claude}`, { method: 'PATCH', headers: json, body: JSON.stringify({ archived }) });
+  assert.equal((await archive(true)).status, 200);
+  assert(Number.isFinite((await chat(ids.claude)).archived));
+  assert.equal((await chat(ids.claude)).pinned, undefined);
+  await fetch(base + '/api/chats/pinned', { method: 'PUT', headers: json, body: JSON.stringify({ ids: [ids.claude] }) });
+  assert.equal((await chat(ids.claude)).pinned, undefined); // can't be pinned while archived
+  send({ op: 'send', chatId: ids.claude, text: 'slow' }); // not open here: watched through the list
+  await until(async () => (await chat(ids.claude)).status === 'running');
+  assert(Number.isFinite((await chat(ids.claude)).archived)); // writing in it doesn't bring it back
+  await until(async () => (await chat(ids.claude)).status === 'idle');
+  assert(Number.isFinite((await chat(ids.claude)).archived));
+  assert.equal((await chat(ids.claude)).unread, false);
+  await archive(false);
+  const back = await chat(ids.claude);
+  assert.equal(back.archived, undefined);
+  assert.equal(back.unread, false); // what it said while archived counts as read
 });

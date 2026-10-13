@@ -35,6 +35,7 @@ const state = {
   newSettings: { model: null, effort: null, ...local.get('newSettings', {}) }, // for the next new chat
   newDir: null, // where the next new chat starts (a terminal's "New chat in this folder"); null = the agent's folder
   listed: false, // the first list arrived (later unread changes are news)
+  showArchived: false, // the sidebar shows the archived chats instead of the list
   off: false, // turned off from here: stop reconnecting
 };
 let loader = null;
@@ -146,6 +147,7 @@ function onMessage(m) {
       const before = new Map(state.chats.map((c) => [c.id, c]));
       state.chats = m.chats;
       state.nextHue = m.nextHue;
+      if (before.get(state.chatId)?.archived && !current()?.archived) state.showArchived = false; // back in the list: show it there
       if (state.listed) for (const c of m.chats) if (c.unread && !before.get(c.id)?.unread) notify(c);
       state.listed = true;
       renderList();
@@ -304,6 +306,7 @@ function openChat(id) {
   if (changed) forgetRecent();
   state.chatId = id || null;
   if (state.chatId) state.newDir = null;
+  if (!current()?.archived) state.showArchived = false; // the list it's in
   local.set('last', state.chatId);
   thread.reset();
   setPages(null, false);
@@ -354,6 +357,13 @@ async function deleteChat(chat) {
     .catch(fail);
 }
 
+// Archived: out of the list, its numbers and every notice (the server stops
+// counting it unread); the open chat makes way, as when it's deleted.
+const archiveChat = (chat, archived) =>
+  api('PATCH', `/api/chats/${chat.id}`, { archived })
+    .then(() => archived && chat.id === state.chatId && go(null))
+    .catch(fail);
+
 // Without the mouse (⇧⌘E): the same rename as double-clicking it in the sidebar.
 async function renameWithDialog(chat) {
   const title = await ask({ title: 'Rename chat', value: chat.title || '', confirm: 'Rename' });
@@ -363,6 +373,9 @@ async function renameWithDialog(chat) {
 // Pinned chats (meta.pinned, their place from 1) come first in the list, in
 // the server's order — mirrored here so a drop shows at once.
 const isPinned = (c) => c.pinned != null;
+// The sidebar's list (and ⌘1–9) leaves the archived chats out; they have their own, behind Archived.
+const listed = () => state.chats.filter((c) => !c.archived);
+const archivedChats = () => state.chats.filter((c) => c.archived);
 const byPlace = (a, b) => (a.pinned ?? Infinity) - (b.pinned ?? Infinity) || b.created - a.created;
 
 // index: its place among the pinned chats; null unpins it.
@@ -401,8 +414,9 @@ function listItem(c) {
       e.stopPropagation();
       const chat = state.chats.find((x) => x.id === c.id) || c;
       showMenu(more, [
-        { label: isPinned(chat) ? 'Unpin' : 'Pin', run: () => togglePin(chat) },
+        chat.archived ? null : { label: isPinned(chat) ? 'Unpin' : 'Pin', run: () => togglePin(chat) },
         { label: 'Rename', run: rename },
+        { label: chat.archived ? 'Unarchive' : 'Archive', run: () => archiveChat(chat, !chat.archived) },
         { label: 'Delete', danger: true, run: () => deleteChat(chat) },
       ]);
     },
@@ -438,14 +452,19 @@ function renderList() {
       listItems.delete(id);
     }
   }
-  state.chats.forEach((c, i) => {
+  const chats = listed();
+  const archived = archivedChats();
+  if (!archived.length) state.showArchived = false;
+  [...chats, ...archived].forEach((c) => {
     let item = listItems.get(c.id);
     if (!item) listItems.set(c.id, (item = listItem(c)));
+    const i = c.archived ? archived.indexOf(c) : chats.indexOf(c);
+    const keyed = !c.archived && i < 9; // ⌘1–9: the list's first nine
     const name = c.title || 'New chat';
     const busy = c.status === 'running';
     item.el.classList.toggle('active', state.view === 'chat' && c.id === state.chatId);
     item.el.style.setProperty('--item-accent', accentFor(c.hue));
-    item.el.title = i < 9 ? `${name}  (${itemKey(i + 1)})` : name;
+    item.el.title = keyed ? `${name}  (${itemKey(i + 1)})` : name;
     item.avatar.textContent = indexLabel(i);
     item.avatar.classList.toggle('busy', busy);
     item.name.textContent = name;
@@ -456,20 +475,39 @@ function renderList() {
     );
     item.sub.classList.toggle('busy', busy || c.unread);
     item.el.classList.toggle('unread', c.unread && !busy);
-    item.kbd.textContent = i < 9 ? itemKey(i + 1) : '';
-    item.kbd.hidden = i >= 9;
-    (isPinned(c) ? pinning.nav : nav).append(item.el); // moves existing nodes into order
+    item.kbd.textContent = keyed ? itemKey(i + 1) : '';
+    item.kbd.hidden = !keyed;
+    (c.archived ? $('#archived-list') : isPinned(c) ? pinning.nav : nav).append(item.el); // moves existing nodes into order
   });
-  const pinned = state.chats.filter(isPinned).length;
-  pinning.update(pinned);
-  $('#chat-count').textContent = state.chats.length > pinned ? indexLabel(state.chats.length - pinned - 1) : '';
+  const pinned = chats.filter(isPinned).length;
+  pinning.update(state.showArchived ? 0 : pinned);
+  $('#chat-count').textContent = chats.length > pinned ? indexLabel(chats.length - pinned - 1) : '';
   let empty = nav.querySelector('.side-list-empty');
-  if (!state.chats.length && !empty) nav.append((empty = h('div', { class: 'side-list-empty', textContent: 'No chats yet.' })));
-  if (state.chats.length) empty?.remove();
+  if (!chats.length && !empty) nav.append((empty = h('div', { class: 'side-list-empty', textContent: 'No chats yet.' })));
+  if (chats.length) empty?.remove();
+  // Archived (the foot's button, while there are any): in the list's place.
+  const showing = state.showArchived;
+  $('#chats-label').hidden = nav.hidden = showing;
+  $('#archived-label').hidden = $('#archived-list').hidden = !showing;
+  $('#archived-count').textContent = $('#archived-total').textContent = archived.length ? indexLabel(archived.length - 1) : '';
+  const button = $('#show-archived');
+  button.hidden = !archived.length;
+  button.classList.toggle('active', showing);
+  button.setAttribute('aria-pressed', String(showing));
   renderUnread();
 }
 
 const pinning = setupPinning({ list: $('#chat-list'), onDrop: movePin, onEnd: renderList });
+
+// The archived chats in the list's place, and back (the foot's Archived button, ⇧⌘A).
+function toggleArchived() {
+  if (!state.showArchived && !archivedChats().length) return toast('No archived chats');
+  state.showArchived = !state.showArchived;
+  renderList();
+  const hidden = narrow() ? !document.body.classList.contains('sidebar-open') : document.body.classList.contains('sidebar-collapsed');
+  if (state.showArchived && hidden) toggleSidebar(); // from the keyboard: show them
+}
+$('#show-archived').addEventListener('click', toggleArchived);
 
 // ---------------------------------------------------------------- unread
 
@@ -512,7 +550,7 @@ function notify(chat) {
       { class: 'notice-head' },
       h('span', { class: 'dot' }),
       h('span', { textContent: 'New reply' }),
-      h('span', { class: 'num', textContent: indexLabel(state.chats.indexOf(chat)) }),
+      h('span', { class: 'num', textContent: indexLabel(listed().indexOf(chat)) }),
       h('button', { type: 'button', class: 'notice-x', 'aria-label': 'Dismiss', textContent: '×', onclick: (e) => (e.stopPropagation(), hideNotice()) }),
     ),
     h('div', { class: 'notice-title', textContent: chat.title || 'New chat' }),
@@ -820,7 +858,7 @@ const SHORTCUTS = [
     note: 'In sidebar order — hold the modifier to see the numbers. The same keys open terminals 1–9',
     match: (e) => itemNumber(e) > 0,
     run: (e) => {
-      const chat = state.chats[itemNumber(e) - 1];
+      const chat = listed()[itemNumber(e) - 1];
       if (!chat) return false;
       go(chat.id);
     },
@@ -877,7 +915,15 @@ const SHORTCUTS = [
     label: 'Pin / unpin this chat',
     note: 'Or drag it to Pinned in the sidebar, and back down to unpin',
     match: (e) => shiftMod(e) && e.code === 'KeyP',
-    run: () => (current() ? togglePin(current()) : false),
+    run: () => (current() && !current().archived ? togglePin(current()) : false),
+  },
+  {
+    id: 'archived',
+    keys: [isMac ? '⇧⌘A' : 'Ctrl+Shift+A'],
+    label: 'Show / hide archived chats',
+    note: 'In the sidebar, in place of the list; the same keys bring the list back',
+    match: (e) => shiftMod(e) && e.code === 'KeyA',
+    run: () => toggleArchived(),
   },
   {
     id: 'delete',
@@ -914,6 +960,7 @@ document.addEventListener(
 
 $('#new-chat-hint').textContent = appKey('N');
 $('#settings-hint').textContent = `${MOD}/`;
+$('#archived-hint').textContent = isMac ? '⇧⌘A' : 'Ctrl+Shift+A';
 $('#terminal-hint').textContent = appKey('T');
 $('#input-key').textContent = `${MOD}K`;
 
