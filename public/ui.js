@@ -528,10 +528,10 @@ function networkSection(net) {
   if (!net.tailscale) return [head, h('p', { textContent: "Tailscale isn't running on this Mac. Other devices reach the panel through it." })];
   const out = [head];
   if (net.urls.length) {
-    out.push(...net.urls.map(addressRow));
+    out.push(...net.urls.map((url) => copyRow(url)));
     out.push(h('p', { textContent: 'Open it in Chrome on Windows, on a phone or any computer. That device needs Tailscale, signed in with an allowed login.' }));
   } else {
-    out.push(h('p', { textContent: 'Not shared on your tailnet yet. On this Mac, run:' }), addressRow(`tailscale serve --bg ${net.port}`));
+    out.push(h('p', { textContent: 'Not shared on your tailnet yet. On this Mac, run:' }), copyRow(`tailscale serve --bg ${net.port}`));
   }
   if (net.funnel) out.push(h('p', { class: 'warn', textContent: 'Tailscale Funnel is on: the panel is reachable from the internet. Turn it off.' }));
   if (!net.online) out.push(h('p', { class: 'warn', textContent: 'This Mac is offline on Tailscale right now.' }));
@@ -548,7 +548,7 @@ function networkSection(net) {
 }
 
 // A value you'll paste elsewhere, with a Copy button.
-function addressRow(text) {
+export function copyRow(text) {
   const code = h('code', { textContent: text });
   const copy = h('button', { type: 'button', textContent: 'Copy' });
   copy.addEventListener('click', async () => {

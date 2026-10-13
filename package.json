@@ -1,13 +1,14 @@
 {
   "name": "mothership",
   "version": "0.1.0",
-  "description": "Web chat UI for a coding agent running on this Mac (Claude Code adapter), plus tmux terminal tabs — reachable over Tailscale.",
+  "description": "Web chat UI for a coding agent running on this Mac (Claude Code and Codex adapters), plus tmux terminal tabs — reachable over Tailscale.",
   "type": "module",
   "main": "server.js",
   "author": "matheuscorreiag",
   "private": true,
   "scripts": {
     "start": "node server.js",
+    "test": "node --test test/*.test.js",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true"
   },
   "engines": {

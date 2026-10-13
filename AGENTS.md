@@ -19,18 +19,22 @@ Two pages, same look:
 - `/terminal/` — **terminals**: tmux-backed shells in the browser, plus a
   Files panel. "Back to chats" returns to `/`.
 
-The agent today is **Claude Code** (`claude -p` in stream-json mode, using the
-owner's subscription — no API key, no Agent SDK). The UI must stay
-**agent-agnostic**: anything Claude-specific lives in `lib/agents/claude.js`.
+Each chat chooses **Claude Code** (`claude -p` in stream-json mode) or
+**Codex** (`codex app-server`, stdio JSON-RPC v2), using the CLI's local login.
+The UI and engine stay **agent-agnostic**: provider code lives in
+`lib/agents/claude.js` and `lib/agents/codex.js`; `lib/agents/process.js` owns
+shared process lifetime. Existing chats without an `agent` field migrate to
+Claude even if the default for new chats changes.
 
 ## Product rules (from the owner)
 
 - **Branding only at the top of the sidebar.** The app's mark and name,
   "Mothership", come first in the sidebar's top row on both pages
   (`setupBrand()` in ui.js), with Share, the status dot and the sidebar's
-  toggle at the row's right end — the owner asked for that order. Nowhere else: no "Claude" or
-  agent names, tab titles are the chat/terminal title, the page is "New
-  chat", "Shortcuts" or "Terminal".
+  toggle at the row's right end — the owner asked for that order. Agent names appear only in the agent/model picker and its default label;
+  they are choices, not page branding. Otherwise no agent names, tab titles are the chat/terminal title, the page is "New
+  chat", "Settings" (or one of its pages: "Shortcuts", "Integrations", an
+  integration's name) or "Terminal".
 - **Monochrome identity.** The mark (a B-2-like flying wing), the favicon, the
   menu-bar glyph and the working indicator are black, white and gray,
   geometric, Linear-like — never the chat's accent. The indicator's words
@@ -43,6 +47,11 @@ owner's subscription — no API key, no Agent SDK). The UI must stay
   color in `base.css` is derived from the same `--h` at a fixed low chroma, so
   the page is faintly tinted and any hue reads well. `setHue()` (ui.js) sets it.
 - **Agent-agnostic** UI and chat engine (see Architecture).
+- **Slack messages go out only when the owner asks, here.** The agents get
+  Slack through the server's own tools (`lib/slack.js`), never a connector:
+  a send must quote the owner's current prompt word for word and go to
+  someone that prompt names. The token is pasted in Settings › Integrations ›
+  Slack, not written in `config.json`.
 - **Tailscale stays** as the network layer. Exposing the app publicly with a
   homemade token was discussed and rejected: the agent runs with
   `--dangerously-skip-permissions` on a machine inside the office network.
@@ -62,7 +71,7 @@ owner's subscription — no API key, no Agent SDK). The UI must stay
 browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680)
                                          ├─ /ws/chat      lib/chat.js ──► agent process per chat (lib/agents/<type>.js)
                                          ├─ /ws/tabs/<id> lib/terminal.js ──► node-pty ⇄ tmux -L mothership
-                                         ├─ /api/*        REST (chats, uploads, local images, tabs, files)
+                                         ├─ /api/*        REST (chats, uploads, local images, tabs, files, slack)
                                          └─ static        public/ (no build step)
 ```
 
@@ -75,9 +84,11 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
 | `lib/chat.js` | chats: processes, queue, interrupt, persistence, broadcast, uploads/media, accent hues |
 | `lib/agents/claude.js` | **the only Claude-specific code**: CLI args, message encoding, interrupt, event parsing, labels |
 | `lib/agents/index.js` | adapter registry by `agent.type` |
+| `lib/slack.js` | Slack: the owner's token (`/api/slack`), the agents' Slack tools and the rule every send is checked against |
+| `lib/mcp-bridge.js` | the stdio MCP server each chat's agent runs: relays `tools/list` / `tools/call` to `/api/agent/tools` with the chat's key |
 | `lib/terminal.js` | tmux tabs + file API (list/read/write/mkdir/rename/trash) + PTY WebSocket |
 | `public/base.css`, `public/ui.js` | **shared by both pages**: fonts, tokens, sidebar, item rows, menus, inline rename, status dot, page tint (`setHue`), accents, `api()`, `h()` |
-| `public/index.html`, `app.js`, `style.css` | chat page (state, WebSocket, usage, shortcuts screen, composer) |
+| `public/index.html`, `app.js`, `style.css` | chat page (state, WebSocket, usage, settings page, composer) |
 | `public/render.js` | chat items → DOM (markdown, tool cards via `TOOLS`, images, streaming drafts) |
 | `public/loader.js` | the "working" indicator (small, swappable contract) |
 | `public/terminal/*` | terminal page |
@@ -88,6 +99,11 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
 
 ### Chat engine
 
+- Each chat stores its immutable `meta.agent` (`claude` or `codex`), selected
+  before its first message. `agent.type` supplies the new-chat default;
+  `agents.claude` / `agents.codex` optionally override provider config without
+  sharing provider-specific flags. Model discovery runs asynchronously and
+  comes from Codex `model/list`, including each model's effort levels.
 - One long-lived agent process per chat, JSON lines over stdin/stdout. Stopped
   after `agent.idleMinutes`; the next message respawns it with `--resume
   <sessionId>` (also works after restarts).
@@ -125,7 +141,8 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   cwd (the agent's folder now; Claude: the last `cwd` stamp in its own
   session log, `~/.claude/projects/*/<sessionId>.jsonl` — the stream only
   reports the starting one), pinned (its place in Pinned, from 1; absent =
-  not pinned), doneAt / readAt. Account-wide usage windows: `~/.mothership/limits.json`.
+  not pinned), doneAt / readAt. Account-wide usage windows: `~/.mothership/limits.json`, keyed by provider
+  (the old unkeyed file migrates to Claude).
 - **Model / effort**: the chat's settings become the adapter's `--model` /
   `--effort` when its process spawns. A process keeps its flags, so changing
   them retires it (`retire()`: detach, then end stdin) — at once if idle, at
@@ -140,20 +157,66 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   uploads go there too. Attachments are passed to the agent as image blocks
   (png/jpeg/gif/webp) and always also by path.
 
+### Slack
+
+- The owner creates a Slack app from the manifest Settings › Integrations ›
+  Slack (`#settings/integrations/slack`) offers — user scopes only, listed in `SCOPES` — and pastes
+  its user token (`xoxp-`) there. `PUT /api/slack` checks it with `auth.test`
+  and saves it in `~/.mothership/slack.json` (0600); no response ever carries
+  it. `DELETE` forgets it. A token keeps its string when the app is
+  reinstalled with more scopes, so `GET` asks `auth.test` again (every 30 s at
+  most) and the page warns about missing scopes, with the token field back in
+  case Slack did issue a new one.
+- While connected, every agent process gets the `mothership` MCP server
+  (`lib/mcp-bridge.js`, through the adapter's `mcpServers`) with tools
+  `slack_conversations`, `slack_read`, `slack_recent` (messages to the owner
+  and mentions of them, last N hours), `slack_search` (Slack's search syntax)
+  and `slack_send`. The last two read through `search.messages`, which takes
+  dates, not times: `slack_recent` asks from the day before and trims. The bridge holds nothing:
+  it posts to `/api/agent/tools` with the chat's random key (`chat.key`, in
+  memory), only accepted straight from localhost. Connecting or disconnecting
+  retires the processes so the next one gets the new tool list.
+- **The send rule** (`sendRefusal()`): the prompt the running turn answers
+  (`chat.turn`, set in `dispatch`, cleared in `endTurn`) must contain the
+  text word for word (whitespace aside, not cut mid-word) and name the
+  recipient outside that text (a person's full, first, display or handle
+  name, accents and case aside; a channel's name). Each text goes to each
+  conversation once per prompt. No turn running: refused. Every send and
+  refusal is logged.
+- The claude.ai Slack connector, if the account has one, is loaded into every
+  Claude Code session and sends anything: the Claude adapter removes its tools
+  (`--disallowedTools=mcp__claude_ai_Slack`). Any other Slack MCP server added
+  to Claude Code would get around the rule too.
+- Tests point `MOTHERSHIP_SLACK_API` at a fake Slack Web API.
+- **Settings pages** (app.js): `SETTINGS` maps each `#settings/<page>` to its
+  title and the page its back button returns to; each page is a
+  `.settings-page[data-page]` in index.html. Integrations is a list built from
+  `INTEGRATIONS` — a new one adds an entry there (its `load()` fills its page
+  and returns `{ connected, note }` for its row), a `SETTINGS` entry and its
+  page.
+
 ### Adding another agent
 
-Create `lib/agents/<type>.js` exporting `{ name, spawnArgs, userMessage,
-interruptMessage, createParser }` (optionally `limitLabel`, `modelLabel`,
-`models` `[{ id, label, note, effort: false? }]` / `efforts` for the per-chat
-picker — the UI shows whatever the adapter offers, nothing if it offers none —
-and `currentDir(sessionId)`, where the agent works now: the status line's
-folder, refreshed after tool results and turns into meta `cwd`),
-register it in `lib/agents/index.js`, set `agent.type` in `config.json`.
-Known limitation: `chat.js` assumes a **persistent process speaking JSON lines**.
-A one-shot CLI (e.g. `codex exec`) or an HTTP API needs the transport moved into
-the adapter (e.g. `start(session)` returning `send/interrupt/stop`). Tool cards
-in `render.js` (`TOOLS`) know Claude Code's tool names; unknown tools fall back
-to a generic card.
+Register a factory in `lib/agents/index.js`. Each adapter exports `name`,
+`spawnArgs`, `models` / `efforts`, and either the Claude-style
+`userMessage` / `interruptMessage` / `createParser`, or
+`createConnection({ write, emit, sessionId, cwd, systemPrompt, model, effort })`
+returning `receive(raw)`, `send({ text, images })`, `interrupt()` and `close(error)`.
+`lib/agents/process.js` spawns and cleans up the process. Async initialization
+never blocks the chat socket, so Stop works during startup. Optional `discover()`
+refreshes the models; `defaultModel` identifies the default model's effort
+choices. `currentDir(sessionId)` can refresh the status line's folder; adapters
+may also emit `{ kind: 'cwd', cwd }`.
+
+Codex initializes the App Server, starts/resumes its saved thread, starts turns,
+and interrupts by thread/turn ID. It uses `approvalPolicy: never` and
+`danger-full-access`, matching the existing trusted local execution model.
+Account apps are disabled; Mothership's MCP bridge supplies checked Slack tools.
+Other manually configured MCP servers carry the same caveat as Claude's.
+Unsupported interactive requests are declined with a chat notice. Codex native
+items become neutral text/thinking/tool events; the renderer knows generic
+shell, patch, search and image cards. `npm test` runs fake-CLI protocol and
+isolated-server tests; live CLI validation uses scratch data and port 7681.
 
 ### Terminals
 
@@ -258,7 +321,7 @@ to a generic card.
   264–520px (264: the top row — mark, name, Share, dot, toggle — fits whole), and saves it in localStorage `ui:sidebarWidth` for both pages.
   Size sidebar content against `--side-w`, never a fixed 272px.
 - Shortcuts are one table per page (chat: `SHORTCUTS` in `app.js`, also drives
-  the Shortcuts screen). Chat: ⌘1–9, ⌘B, ⌘J, ⌘K, ⌘/, ⇧⌘E rename, ⇧⌘D delete
+  Settings › Shortcuts). Chat: ⌘1–9, ⌘B, ⌘J, ⌘K, ⌘/, ⇧⌘E rename, ⇧⌘D delete
   (not ⌘⌫, the Mac's usual delete: in the message box it erases the line;
   not ⇧⌘R, the browser's hard reload), ⇧⌘P pin / unpin (also on the
   terminal page). Terminal: ⌘1–9, ⌘B, ⌘E
@@ -297,6 +360,11 @@ to a generic card.
   upgrades, plus a required `X-Mothership: 1` header on every write.
 - Media and `/api/local-image` (images under `$HOME` only) are served with a
   sandboxing CSP and `nosniff`.
+- Slack (see Architecture): the token lives in `~/.mothership/slack.json`,
+  readable by anything running as the owner — the agent's shell included.
+  The send rule keeps the agent from being talked into sending; it can't stop
+  an agent that's already been turned into reading the file and calling Slack
+  itself (the risk `--dangerously-skip-permissions` already carries).
 - `config.json` (has the owner's Tailscale login) is gitignored — never commit
   it. Don't put the tailnet hostname/URL in tracked files.
 
@@ -353,6 +421,12 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
 - **tmux targets**: use `=name` for session commands and `=name:` for pane
   commands (`set-option`, `send-keys`, `paste-buffer`); the bare `=name` form
   fails there.
+- **Claude CLI list flags** (`--disallowedTools`, `--mcp-config`, …) take
+  several values and swallow the next argument that isn't a flag: pass one
+  with `=` or keep a flag after it.
+- **claude.ai connectors** (Slack, Gmail…) come into every Claude Code session
+  of the account, `claude -p` included, as `mcp__claude_ai_<Name>__*`; they
+  aren't in the `init` event's tool list (they load after it).
 - **Claude stream-json**: one `assistant` event per finished content block
   (same message id), in stream order — block index = count per message id.
   Interrupt = `control_request` `{ subtype: 'interrupt' }`. Context = last
@@ -389,7 +463,11 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
 - **Keyboard capture over xterm**: page shortcuts listen on `document` in the
   capture phase and `stopPropagation()` so the terminal never sees them.
 - Launched from inside another terminal/agent, child processes inherit
-  `CLAUDE*`/`CMUX*`/`TMUX*` env vars — `cleanEnv()` strips them.
+  `CLAUDE*`/`CMUX*`/`TMUX*` env vars — `cleanEnv()` strips them. It also
+  strips internal `CODEX_*` variables (parent session, sandbox and permission
+  profile), retaining only `CODEX_HOME` and `CODEX_API_KEY`. Leaking the
+  parent sandbox context made the Codex tool host time out even though
+  ordinary text replies worked.
 - The launchd plist bakes in the current `node` path (nvm); re-run
   `scripts/launchd.sh install` after switching Node versions.
 - **WKWebView**: `evaluateJavaScript` doesn't await promises (use
@@ -412,7 +490,8 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
 
 - `~/.mothership/chats/<id>/{meta.json,events.jsonl}` (plus `events-<ts>.jsonl`,
   what each `/clear` set aside), `~/.mothership/media/`,
-  `~/.mothership/limits.json`, `~/.mothership/off` (present while turned off). The
+  `~/.mothership/limits.json`, `~/.mothership/off` (present while turned off),
+  `~/.mothership/slack.json` (the Slack token, while connected). The
   agent's own transcripts (used by `--resume`) live in `~/.claude/`.
 - Survives connection drops and restarts. Lost on a hard shutdown mid-turn:
   the block being streamed and the in-memory queue. Ideas not done yet:

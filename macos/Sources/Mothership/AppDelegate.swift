@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       page("Show / Hide Sidebar", "b", code: "KeyB"),
       page("Show / Hide Files", "e", code: "KeyE"),
       page("Go to Message Box", "k", code: "KeyK"),
-      page("Shortcuts", "/", code: "Slash"),
+      page("Settings", "/", code: "Slash"),
       .separator(),
       item("Reload", #selector(reload(_:)), "r", target: self),
       item("Actual Size", #selector(zoom(_:)), "0", target: self),

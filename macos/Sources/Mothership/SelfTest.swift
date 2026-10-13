@@ -153,7 +153,7 @@
       press("b", 11)
       await wait(0.4)
       press("/", 44)
-      check("⌘/ opens Shortcuts", await until(1) { await self.text("location.hash") == "#shortcuts" })
+      check("⌘/ opens Settings", await until(1) { await self.text("location.hash") == "#settings" })
       press("1", 18)
       let first = (try? await web.webView.callAsyncJavaScript("return (await (await fetch('/api/chats')).json())[0]?.id || ''", contentWorld: .page)) as? String ?? ""
       check("⌘1 opens the first chat", await until(1.5) { await self.text("location.hash.slice(1)") == first && !first.isEmpty }, first)

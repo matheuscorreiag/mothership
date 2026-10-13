@@ -88,6 +88,13 @@ function gallery(images) {
 // input. open: start expanded. Icons are shell-ish marks (< reads, > writes,
 // & runs in the background…) drawn in the mono font.
 export const TOOLS = {
+  shell: { name: 'Shell', icon: '$', summary: (i) => i.command, body: (i) => code(i.command, 'bash') },
+  apply_patch: { name: 'Patch', icon: '±', summary: (i) => (i.changes || []).map((c) => short(c.path)).join(', '),
+    body: (i) => code((i.changes || []).map((c) => `${c.path}\n${c.diff}`).join('\n'), 'diff') },
+  web_search: { name: 'Search', icon: '?', summary: (i) => i.query },
+  view_image: { name: 'Image', icon: '<', summary: (i) => short(i.path) },
+  generate_image: { name: 'Image', icon: '>', summary: (i) => i.prompt },
+  agent: { name: 'Agent', icon: '&', summary: (i) => i.prompt || i.tool },
   Bash: { icon: '$', summary: (i) => i.description || i.command, body: (i) => code(i.command, 'bash') },
   Read: { icon: '<', summary: (i) => short(i.file_path) },
   Write: { icon: '>', summary: (i) => short(i.file_path), body: (i) => code(i.content) },
@@ -101,7 +108,16 @@ export const TOOLS = {
   Task: { icon: '&', summary: (i) => i.description },
   Agent: { icon: '&', summary: (i) => i.description },
   TodoWrite: { icon: '#', summary: (i) => todoSummary(i.todos), body: (i) => todos(i.todos), open: true },
+  // The server's own tools (lib/slack.js), through its MCP bridge.
+  mcp__mothership__slack_conversations: { name: 'Slack', icon: '#', summary: (i) => (i.query ? `conversations · ${i.query}` : 'conversations') },
+  mcp__mothership__slack_read: { name: 'Slack', icon: '<', summary: (i) => `read ${i.conversation}${i.thread_ts ? ' · thread' : ''}` },
+  mcp__mothership__slack_recent: { name: 'Slack', icon: '<', summary: (i) => `recent · ${i.hours || 24} h` },
+  mcp__mothership__slack_search: { name: 'Slack', icon: '?', summary: (i) => `search · ${i.query}` },
+  mcp__mothership__slack_send: { name: 'Slack', icon: '>', summary: (i) => `send · ${i.text}`, body: (i) => code(`to: ${i.conversation}${i.thread_ts ? ` (thread ${i.thread_ts})` : ''}\n\n${i.text}`) },
 };
+
+// What a tool is called on screen.
+export const toolName = (name) => TOOLS[name]?.name || name;
 
 function diff(before = '', after = '') {
   const lines = [...before.split('\n').map((l) => ['del', `- ${l}`]), ...after.split('\n').map((l) => ['add', `+ ${l}`])];
@@ -130,7 +146,7 @@ function toolCard(block) {
     'button',
     { class: 'tool-head', type: 'button', onclick: () => (body.hidden = !body.hidden) },
     h('span', { class: 'tool-icon', textContent: spec.icon }),
-    h('span', { class: 'tool-name', textContent: block.name }),
+    h('span', { class: 'tool-name', textContent: toolName(block.name) }),
     h('span', { class: 'tool-sum', textContent: spec.summary(input) || '' }),
     h('span', { class: 'tool-state' }),
   );
@@ -268,7 +284,7 @@ export class Thread {
       const draft = { kind: ev.kind, text: ev.text || '', parent: ev.parent, el: null };
       this.drafts.set(key, draft);
       if (ev.kind === 'tool_use') {
-        draft.el = h('div', { class: 'tool pending' }, h('div', { class: 'tool-head' }, h('span', { class: 'tool-icon', textContent: TOOLS[ev.name]?.icon || '•' }), h('span', { class: 'tool-name', textContent: ev.name }), h('span', { class: 'tool-sum', textContent: 'preparing…' })));
+        draft.el = h('div', { class: 'tool pending' }, h('div', { class: 'tool-head' }, h('span', { class: 'tool-icon', textContent: TOOLS[ev.name]?.icon || '•' }), h('span', { class: 'tool-name', textContent: toolName(ev.name) }), h('span', { class: 'tool-sum', textContent: 'preparing…' })));
         this.container(ev.parent).append(draft.el);
       }
       if (draft.text) this.paint(draft);

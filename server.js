@@ -6,6 +6,7 @@
 //   lib/chat.js      agent conversations over WebSocket (/ws/chat)
 //   lib/agents/      adapters per agent (claude.js)
 //   lib/terminal.js  tmux-backed terminal tabs (/ws/tabs/<id>) and files API
+//   lib/slack.js     Slack for the agents (their tools) and its token (/api/slack)
 //   lib/config.js    settings and shared helpers
 
 import http from 'node:http';
@@ -17,6 +18,7 @@ import { loadChats, handleChatApi, handleChatUpgrade, serveMedia, stopChats, pau
 import { handleTerminalApi, handleTerminalUpgrade, terminalInfo, detachTerminals } from './lib/terminal.js';
 import { power, setPower, keepAwake } from './lib/power.js';
 import { networkInfo } from './lib/network.js';
+import { loadSlack, handleSlackApi } from './lib/slack.js';
 
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
 const VENDOR = {
@@ -110,6 +112,7 @@ async function handleApi(req, res, url) {
   if (!power.on) throw new HttpError(503, 'turned off');
   if (url.pathname === '/api/network' && req.method === 'GET') return sendJson(res, 200, await networkInfo());
   if (await handleChatApi(req, res, url)) return;
+  if (await handleSlackApi(req, res, url)) return;
   if (await handleTerminalApi(req, res, url)) return;
   throw new HttpError(404, 'route not found');
 }
@@ -154,6 +157,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 }
 
 await loadChats();
+await loadSlack();
 keepAwake();
 server.listen(config.port, config.host, () => {
   console.log(`mothership on http://${config.host}:${config.port}${power.on ? '' : ' (turned off)'}`);

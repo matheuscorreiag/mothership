@@ -3,9 +3,9 @@
 // the "working" indicator in loader.js. Nothing here depends on which agent
 // runs behind the server.
 
-import { Thread } from '/render.js';
+import { Thread, toolName } from '/render.js';
 import { createLoader } from '/loader.js';
-import { $, h, touch, narrow, isMac, MOD, standalone, native, appKey, isAppKey, itemKey, itemNumber, ask, api, storage, toast, fail, place, hidePopovers, showMenu, editInline, setupSidebar, setupPinning, setConn, accentFor, setHue, indexLabel, MORE_ICON, ago } from '/ui.js';
+import { $, h, touch, narrow, isMac, MOD, standalone, native, appKey, isAppKey, itemKey, itemNumber, ask, api, storage, toast, fail, place, copyRow, hidePopovers, showMenu, editInline, setupSidebar, setupPinning, setConn, accentFor, setHue, indexLabel, MORE_ICON, ago } from '/ui.js';
 
 const randomId = () => Math.random().toString(36).slice(2, 10);
 const local = storage('chat'); // last chat, unsent drafts, settings for new chats
@@ -16,18 +16,21 @@ const messages = $('#messages');
 
 const state = {
   chats: [], // pinned first, then newest first, stable: ⌘1…⌘9 follow this order
-  view: 'chat', // chat | shortcuts
+  view: 'chat', // chat | settings
   chatId: null, // null = a new chat, created by its first message
   nextHue: null, // accent the next new chat will get
   status: 'idle',
   queue: [],
-  limits: null, // { status, windows: [{ id, label, utilization, resetsAt }], updated }
+  limits: {}, // { status, windows: [{ id, label, utilization, resetsAt }], updated }
   phase: {}, // what the working indicator shows: { phase, label, moment }
   opening: null, // { chatId, buffer } until the history arrives
   attachments: [], // { id, name, mediaType, preview, uploading, file, url }
   sends: new Map(), // ref -> what was sent, to restore it on error
   editing: false, // a title is being renamed inline: hold list re-renders
-  agent: { models: [], efforts: [], cwd: null, home: null }, // per-chat choices the agent offers, where it starts
+  agents: [],
+  defaultAgent: null,
+  home: null,
+  newAgent: local.get('newAgent', null), // per-chat choices the agent offers, where it starts
   newSettings: { model: null, effort: null, ...local.get('newSettings', {}) }, // for the next new chat
   newDir: null, // where the next new chat starts (a terminal's "New chat in this folder"); null = the agent's folder
   listed: false, // the first list arrived (later unread changes are news)
@@ -129,7 +132,10 @@ function onMessage(m) {
   const here = m.chatId && m.chatId === state.chatId;
   switch (m.op) {
     case 'agent':
-      state.agent = { models: m.models, efforts: m.efforts, cwd: m.cwd || null, home: m.home || null };
+      state.defaultAgent = m.default || 'claude';
+      state.home = m.home || null;
+      state.agents = m.agents || [{ id: 'claude', name: 'Claude Code', models: m.models || [], efforts: m.efforts || [], cwd: m.cwd }];
+      if (!state.agents.some((a) => a.id === state.newAgent)) state.newAgent = state.defaultAgent;
       renderStats();
       renderDir();
       break;
@@ -146,7 +152,7 @@ function onMessage(m) {
     }
 
     case 'limits':
-      state.limits = m.limits;
+      state.limits[m.agent || state.defaultAgent] = m.limits;
       renderHeader();
       break;
 
@@ -243,10 +249,23 @@ function onMessage(m) {
 
 // ----------------------------------------------------------------- chats
 
-// Routes: #<chatId> (or empty for a new chat) and #shortcuts.
+// Routes: #<chatId> (or empty for a new chat), #settings and its pages
+// #settings/<page>.
+// The settings pages: their title and the page their back button goes to ('' is
+// the list itself, which goes back to the chat).
+const SETTINGS = {
+  '': { title: 'Settings' },
+  shortcuts: { title: 'Shortcuts', up: '' },
+  integrations: { title: 'Integrations', up: '' },
+  'integrations/slack': { title: 'Slack', up: 'integrations' },
+};
 function route() {
   const hash = location.hash.slice(1);
-  return hash === 'shortcuts' ? { view: 'shortcuts' } : { view: 'chat', chatId: hash || null };
+  if (hash === 'settings' || hash.startsWith('settings/')) {
+    const page = hash.slice('settings/'.length);
+    return { view: 'settings', page: SETTINGS[page] ? page : '' };
+  }
+  return { view: 'chat', chatId: hash || null };
 }
 const hashId = () => route().chatId ?? null;
 
@@ -259,8 +278,8 @@ function go(id) {
 
 function applyRoute() {
   const r = route();
-  if (r.view === 'shortcuts') return setView('shortcuts');
-  // Back from Shortcuts to the chat that's still loaded behind it.
+  if (r.view !== 'chat') return setView(r.view);
+  // Back from Settings to the chat that's still loaded behind it.
   if (state.view !== 'chat' && r.chatId === state.chatId) return setView('chat');
   setView('chat');
   openChat(r.chatId);
@@ -270,7 +289,8 @@ window.addEventListener('hashchange', applyRoute);
 function setView(view) {
   state.view = view;
   document.body.dataset.view = view;
-  $('#open-shortcuts').classList.toggle('active', view === 'shortcuts');
+  $('#open-settings').classList.toggle('active', view === 'settings');
+  if (view === 'settings') showSettings(route().page);
   hidePopovers();
   renderHeader();
   renderList();
@@ -305,7 +325,7 @@ function newChat() {
 }
 
 function focusInput() {
-  // From Shortcuts, the composer only shows once the chat view is back (on hashchange).
+  // From another screen, the composer only shows once the chat view is back (on hashchange).
   if (state.view !== 'chat') {
     addEventListener('hashchange', focusInput, { once: true });
     return go(state.chatId);
@@ -523,7 +543,8 @@ function openReply() {
 function renderHeader() {
   const chat = current();
   const n = unreadCount();
-  document.title = `${n ? `(${n}) ` : ''}${state.view === 'shortcuts' ? 'Shortcuts' : chat?.title || 'New chat'}`;
+  const title = state.view === 'settings' ? SETTINGS[route().page].title : chat?.title || 'New chat';
+  document.title = `${n ? `(${n}) ` : ''}${title}`;
   applyAccent();
   renderDir();
   renderStats();
@@ -532,7 +553,7 @@ function renderHeader() {
 // The status line's left side: the folder the open chat's agent works in (a
 // new chat: where it will start). The chat itself is the one lit in the sidebar.
 function renderDir() {
-  const dir = current()?.cwd || state.newDir || state.agent.cwd;
+  const dir = current()?.cwd || state.newDir || agentOf().cwd;
   const el = $('#chat-dir');
   el.title = dir || '';
   // LRM marks keep the slashes in order inside the rtl box, which trims a long
@@ -541,7 +562,7 @@ function renderDir() {
 }
 
 const shortPath = (dir) => {
-  const home = state.agent.home;
+  const home = state.home;
   return home && (dir === home || dir.startsWith(`${home}/`)) ? `~${dir.slice(home.length)}` : dir;
 };
 
@@ -600,29 +621,36 @@ function renderStats() {
   const chat = current();
   const ctx = chat?.context;
   const parts = [];
-  if (state.agent.models.length) parts.push(modelButton(chat));
+  if (state.agents.length) parts.push(modelButton(chat));
   else if (chat?.modelLabel || chat?.model) parts.push(h('span', { class: 'model', textContent: chat.modelLabel || chat.model }));
   if (ctx?.window) parts.push(stat({ label: 'ctx', pct: contextPct(ctx), title: `Context: ${tokens(ctx.used)} / ${tokens(ctx.window)} tokens` }));
-  for (const w of state.limits?.windows || []) parts.push(stat({ label: w.label, pct: windowPct(w), title: `${w.label} usage — ${resetsIn(w.resetsAt)}` }));
+  for (const w of limitsOf()?.windows || []) parts.push(stat({ label: w.label, pct: windowPct(w), title: `${w.label} usage — ${resetsIn(w.resetsAt)}` }));
   $('#chat-stats').replaceChildren(...parts);
   if (!$('#usage-panel').hidden) renderUsagePanel();
-  if (!$('#model-panel').hidden) renderModelPanel();
+  if (!$('#model-panel').hidden) {
+    renderModelPanel();
+    const anchor = $('#chat-stats .model');
+    if (anchor) place($('#model-panel'), anchor);
+  }
 }
 
 // ------------------------------------------------------ model and effort
 
 // Per chat; a new chat uses the ones picked for it (kept per device).
 const settingsOf = (chat) => (chat ? { model: null, effort: null, ...chat.settings } : state.newSettings);
-const modelOption = (id) => state.agent.models.find((m) => m.id === id);
+const agentId = () => current()?.agent || (current() ? state.defaultAgent : state.newAgent) || state.defaultAgent;
+const agentOf = () => state.agents.find((a) => a.id === agentId()) || { models: [], efforts: [], cwd: null };
+const limitsOf = () => state.limits[agentId()];
+const modelOption = (id) => agentOf().models.find((m) => m.id === (id || agentOf().defaultModel));
 
 function modelButton(chat) {
   const { model, effort } = settingsOf(chat);
   // The exact model once a process reported it, else the choice.
-  const label = (chat ? chat.modelLabel : modelOption(model)?.label) || 'Default model';
+  const label = (chat ? chat.modelLabel : modelOption(model)?.label) || `${agentOf().name || 'Default'} · Default`;
   const showEffort = effort && modelOption(model)?.effort !== false;
   return h(
     'button',
-    { type: 'button', class: 'model', title: 'Model and effort', 'data-popover-anchor': '', onclick: (e) => openModelPanel(e.currentTarget) },
+    { type: 'button', class: 'model', title: 'Agent, model and effort', 'data-popover-anchor': '', onclick: (e) => openModelPanel(e.currentTarget) },
     h('span', { class: 'model-name', textContent: label }),
     h('span', { class: 'model-short', textContent: label.split(' · ')[0] }), // phones: no "· 1M"
     showEffort ? h('span', { class: 'effort', textContent: effort }) : null,
@@ -633,8 +661,24 @@ function renderModelPanel() {
   const chat = current();
   const { model, effort } = settingsOf(chat);
   const noEffort = modelOption(model)?.effort === false;
-  const models = [{ id: null, label: 'Default', note: 'account setting' }, ...state.agent.models];
+  const models = [{ id: null, label: 'Default', note: 'account setting' }, ...agentOf().models];
+  if (model && !models.some((m) => m.id === model)) models.push({ id: model, label: chat?.modelLabel || model });
+  const efforts = modelOption(model)?.efforts || agentOf().efforts;
   $('#model-panel').replaceChildren(
+    h('section', { class: 'pick-group' },
+      h('h2', { textContent: 'Agent' }),
+      h('div', { class: 'segmented' }, ...state.agents.map((a) => h('button', {
+        type: 'button', textContent: a.name, class: a.id === agentId() ? 'on' : '', disabled: Boolean(chat),
+        onclick: () => {
+          if (a.id === state.newAgent) return;
+          state.newAgent = a.id;
+          local.set('newAgent', a.id);
+          changeSettings({ model: null, effort: null });
+          renderDir();
+        },
+      }))),
+      chat ? h('div', { class: 'meter-foot', textContent: 'Choose a different agent in a new chat.' }) : null,
+    ),
     h(
       'section',
       { class: 'pick-group' },
@@ -649,15 +693,15 @@ function renderModelPanel() {
         ),
       ),
     ),
-    state.agent.efforts.length
+    efforts.length
       ? h(
           'section',
           { class: 'pick-group' },
           h('h2', { textContent: 'Effort' }),
           h(
             'div',
-            { class: 'segmented' },
-            ...[null, ...state.agent.efforts].map((e) =>
+            { class: `segmented${efforts.length > 5 ? ' wrap' : ''}` },
+            ...[null, ...efforts].map((e) =>
               h('button', { type: 'button', class: !noEffort && e === effort ? 'on' : '', disabled: noEffort, textContent: e ?? 'default', onclick: () => changeSettings({ effort: e }) }),
             ),
           ),
@@ -678,22 +722,26 @@ function openModelPanel(anchor) {
 
 async function changeSettings(changes) {
   const chat = current();
+  if ('model' in changes && modelOption(changes.model)?.efforts && !modelOption(changes.model).efforts.includes(settingsOf(chat).effort)) changes.effort = null;
   if (!chat) {
     state.newSettings = { ...state.newSettings, ...changes };
     local.set('newSettings', state.newSettings);
     return renderStats();
   }
   // Show it right away; the server's list confirms it.
+  const before = { settings: chat.settings, modelLabel: chat.modelLabel };
   chat.settings = { ...settingsOf(chat), ...changes };
   if ('model' in changes) chat.modelLabel = modelOption(changes.model)?.label || '';
   renderStats();
-  await api('PATCH', `/api/chats/${chat.id}`, changes).catch(fail);
+  try { Object.assign(chat, await api('PATCH', `/api/chats/${chat.id}`, changes)); }
+  catch (err) { Object.assign(chat, before); fail(err); }
+  renderStats();
 }
 
 function renderUsagePanel() {
   const ctx = current()?.context;
-  const windows = state.limits?.windows || [];
-  const updated = state.limits && ago(state.limits.updated);
+  const windows = limitsOf()?.windows || [];
+  const updated = limitsOf() && ago(limitsOf().updated);
   $('#usage-panel').replaceChildren(
     ctx?.window
       ? h(
@@ -807,11 +855,12 @@ const SHORTCUTS = [
     run: () => (current() ? deleteChat(current()) : false),
   },
   {
-    id: 'shortcuts',
+    id: 'settings',
     keys: [`${MOD}/`],
-    label: 'Open this screen',
+    label: 'Open Settings',
+    note: 'Where this list is, under Shortcuts',
     match: (e) => mod(e) && (e.key === '/' || e.code === 'Slash'), // ABNT keyboards put / elsewhere
-    run: () => (location.hash = 'shortcuts'),
+    run: () => (location.hash = 'settings'),
   },
   { id: 'send', keys: ['Enter'], label: 'Send message', note: 'On a phone, use the send button' },
   { id: 'newline', keys: ['⇧Enter'], label: 'New line in the message' },
@@ -831,11 +880,11 @@ document.addEventListener(
 );
 
 $('#new-chat-hint').textContent = appKey('N');
-$('#shortcuts-hint').textContent = `${MOD}/`;
+$('#settings-hint').textContent = `${MOD}/`;
 $('#terminal-hint').textContent = appKey('T');
 $('#input-key').textContent = `${MOD}K`;
 
-// The Shortcuts screen: what each one does and its keys.
+// Settings › Shortcuts: what each one does and its keys.
 $('#shortcut-list').replaceChildren(
   ...SHORTCUTS.map((s) =>
     h(
@@ -846,8 +895,141 @@ $('#shortcut-list').replaceChildren(
     ),
   ),
 );
-$('#open-shortcuts').addEventListener('click', () => (location.hash = 'shortcuts'));
-$('#back-to-chat').addEventListener('click', () => go(state.chatId));
+// ------------------------------------------------------------- settings
+
+// A list of its pages (#settings), each opening on its own: Shortcuts
+// (above) and Integrations, which lists one page per integration.
+function showSettings(page) {
+  const { title, up } = SETTINGS[page];
+  for (const el of document.querySelectorAll('.settings-page')) el.hidden = el.dataset.page !== page;
+  $('#settings-title').textContent = title;
+  $('#settings-back span').textContent = up == null ? 'Chat' : SETTINGS[up].title;
+  $('#settings-back').setAttribute('aria-label', `Back to ${up == null ? 'the chat' : SETTINGS[up].title}`);
+  $('#settings-view').scrollTop = 0;
+  if (page === '' || page === 'integrations') loadIntegrations(); // the lines that say how each stands
+  else INTEGRATIONS.find((i) => page === `integrations/${i.id}`)?.load();
+}
+
+$('#open-settings').addEventListener('click', () => (location.hash = 'settings'));
+$('#settings-back').addEventListener('click', () => {
+  const { up } = SETTINGS[route().page];
+  if (up == null) go(state.chatId);
+  else location.hash = up ? `settings/${up}` : 'settings';
+});
+
+// ---------------------------------------------------------- integrations
+
+// One row each in Settings › Integrations, opening its own page
+// (#settings/integrations/<id>: a [data-page] in index.html and an entry in
+// SETTINGS). load() fills that page and says how it stands: { connected, note }.
+const INTEGRATIONS = [{ id: 'slack', name: 'Slack', icon: '<path d="M10 4 8 20M16 4l-2 16M5 9h15M4 15h15" />', load: loadSlack }];
+
+const integrationNotes = new Map(); // id -> the note in its row
+$('#integration-list').replaceChildren(
+  ...INTEGRATIONS.map((i) => {
+    const note = h('small', { textContent: '…' });
+    integrationNotes.set(i.id, note);
+    return h(
+      'a',
+      { href: `#settings/integrations/${i.id}` },
+      h('span', { class: 'icon', innerHTML: `<svg viewBox="0 0 24 24" aria-hidden="true">${i.icon}</svg>` }),
+      h('span', { class: 'what' }, i.name, note),
+      h('span', { class: 'chevron', 'aria-hidden': 'true', textContent: '›' }),
+    );
+  }),
+);
+
+async function loadIntegrations() {
+  const states = await Promise.all(INTEGRATIONS.map((i) => i.load()));
+  INTEGRATIONS.forEach((i, n) => {
+    const note = integrationNotes.get(i.id);
+    note.textContent = states[n].note;
+    note.classList.toggle('on', states[n].connected);
+  });
+  const on = INTEGRATIONS.filter((_, n) => states[n].connected).map((i) => i.name);
+  $('#integrations-note').textContent = on.length ? `Connected: ${on.join(', ')}` : 'None connected';
+}
+
+// Integrations › Slack: the owner's user token goes in here, never in
+// config.json; the server keeps it on the Mac and only ever says whose it is.
+// The app the token comes from is created from a manifest with the scopes the
+// server asks for.
+async function loadSlack() {
+  let s;
+  try {
+    s = await api('GET', '/api/slack');
+  } catch (err) {
+    // A page newer than the server it talks to (front-end changes are live at once).
+    s = { error: err.status === 404 ? 'the server needs a restart to load this' : err.message };
+  }
+  renderSlack(s);
+  return { connected: Boolean(s.connected), note: s.error ? `Couldn't check: ${s.error}` : s.connected ? `Connected as @${s.user} in ${s.team}` : 'Not connected' };
+}
+
+function renderSlack(s) {
+  const status = $('#slack-status');
+  status.classList.toggle('on', Boolean(s.connected));
+  if (s.error) status.replaceChildren(h('span', { class: 'dot' }), `Couldn't check: ${s.error}`);
+  else if (s.connected) {
+    const team = s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener', textContent: s.team }) : s.team;
+    status.replaceChildren(
+      h('span', { class: 'dot' }),
+      h('span', {}, 'Connected as ', h('b', { textContent: `@${s.user}` }), ' in ', team),
+      h('button', { type: 'button', textContent: 'Disconnect', onclick: disconnectSlack }),
+    );
+    if (s.missing?.length) {
+      const scopes = s.missing.join(', ');
+      const text = `The token lacks ${scopes}: some tools will fail. In the app's OAuth & Permissions, add ${s.missing.length > 1 ? 'them' : 'it'} to the User Token Scopes and reinstall the app. If Slack shows a new token, paste it below.`;
+      status.append(h('span', { class: 'warn', textContent: text }));
+    }
+  } else status.replaceChildren(h('span', { class: 'dot' }), 'Not connected.');
+  // Connected, it's for a new token when Slack gave one (reinstalled with more scopes).
+  $('#slack-form').hidden = Boolean(s.error || (s.connected && !s.missing?.length));
+  $('#slack-form button').textContent = s.connected ? 'Update' : 'Connect';
+  $('#slack-help').open = !s.connected && !s.error;
+  if (s.scopes) {
+    const manifest = JSON.stringify({
+      display_information: { name: 'Mothership', description: 'Lets the agent on my Mac read my conversations and send the messages I ask it to.' },
+      oauth_config: { scopes: { user: s.scopes } },
+      settings: { org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false },
+    });
+    $('#slack-create').href = `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(manifest)}`;
+    $('#slack-manifest').replaceChildren(copyRow(JSON.stringify(JSON.parse(manifest), null, 2)));
+  }
+}
+
+$('#slack-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const field = $('#slack-token');
+  const button = e.target.querySelector('button');
+  if (!field.value.trim()) return field.focus();
+  const wasConnected = $('#slack-status').classList.contains('on');
+  button.disabled = true;
+  try {
+    renderSlack(await api('PUT', '/api/slack', { token: field.value }));
+    field.value = '';
+    toast(wasConnected ? 'Token updated' : 'Slack connected');
+  } catch (err) {
+    fail(err);
+  }
+  button.disabled = false;
+});
+
+async function disconnectSlack() {
+  const sure = await ask({
+    title: 'Disconnect Slack?',
+    text: 'The token is deleted from this Mac and the agents lose their Slack tools. The app stays installed in Slack.',
+    confirm: 'Disconnect',
+    danger: true,
+  });
+  if (!sure) return;
+  try {
+    renderSlack(await api('DELETE', '/api/slack'));
+  } catch (err) {
+    fail(err);
+  }
+}
+
 
 // ------------------------------------------------------------- on / off
 
@@ -950,11 +1132,11 @@ function livePhase(ev) {
   if (ev.t !== 'start') return;
   if (ev.kind === 'thinking') sayPhase('thinking', 'thinking');
   else if (ev.kind === 'text') sayPhase('writing', 'writing');
-  else if (ev.kind === 'tool_use') setPhase('tool', `Arming ${ev.name}`);
+  else if (ev.kind === 'tool_use') setPhase('tool', `Arming ${toolName(ev.name)}`);
 }
 
 function itemPhase(item) {
-  if (item.t === 'block' && item.block.type === 'tool_use') setPhase('tool', `Deploying ${item.block.name}`);
+  if (item.t === 'block' && item.block.type === 'tool_use') setPhase('tool', `Deploying ${toolName(item.block.name)}`);
   else if (item.t === 'tool_result') sayPhase('thinking', 'reading');
 }
 
@@ -1159,7 +1341,7 @@ $('#composer').addEventListener('submit', (e) => {
   // A new chat starts with these.
   const settings = state.chatId ? undefined : state.newSettings;
   const dir = state.chatId ? undefined : state.newDir || undefined;
-  if (!wsSend({ op: 'send', ref, chatId: state.chatId, text, attachments, settings, dir })) return toast('Not connected to the server', true);
+  if (!wsSend({ op: 'send', ref, chatId: state.chatId, text, attachments, settings, dir, agent: state.newAgent || state.defaultAgent })) return toast('Not connected to the server', true);
   state.sends.set(ref, { text, attachments: state.attachments });
   input.value = '';
   local.set(draftKey(), null);

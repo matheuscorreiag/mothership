@@ -25,7 +25,7 @@
   background: radial-gradient(ellipse 70% 42% at 50% -6%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 72%);
 }
 body.sidebar-collapsed #messages,
-body.sidebar-collapsed #shortcuts-view {
+body.sidebar-collapsed .page-view {
   padding-top: calc(64px + env(safe-area-inset-top));
 }
 
@@ -1232,6 +1232,8 @@ button.model:hover {
   position: fixed;
   z-index: 30;
   width: min(320px, calc(100vw - 24px));
+  max-height: calc(var(--app-h, 100dvh) - 24px);
+  overflow-y: auto;
   display: grid;
   gap: 18px;
   background: var(--raised);
@@ -1304,6 +1306,14 @@ button.model:hover {
 }
 .segmented button:first-child {
   border-left: none;
+}
+.segmented.wrap {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.segmented.wrap button {
+  min-width: 0;
+  border: none;
 }
 .segmented button:hover:not(:disabled) {
   color: var(--text);
@@ -1496,32 +1506,32 @@ body.away .notice-time {
   }
 }
 
-/* ---------------------------------------------------------- shortcuts */
+/* ----------------------------------------------------------- settings */
 
-#shortcuts-view {
+.page-view {
   display: none;
   overflow-y: auto;
   padding: calc(48px + env(safe-area-inset-top)) 16px 32px;
 }
-body[data-view='shortcuts'] #shortcuts-view {
+body[data-view='settings'] #settings-view {
   display: block;
 }
-body[data-view='shortcuts'] #messages,
-body[data-view='shortcuts'] #composer-wrap,
-body[data-view='shortcuts'] #jump {
+body:not([data-view='chat']) #messages,
+body:not([data-view='chat']) #composer-wrap,
+body:not([data-view='chat']) #jump {
   display: none !important;
 }
-.shortcuts-inner {
+.view-inner {
   max-width: 640px;
   margin: 0 auto;
   display: grid;
   gap: 14px;
 }
-.shortcuts-inner .label {
+.view-inner .label {
   margin: 0;
   color: var(--accent);
 }
-#shortcuts-title {
+.view-title {
   margin: 0;
   font-size: 48px;
   font-weight: 600;
@@ -1529,11 +1539,91 @@ body[data-view='shortcuts'] #jump {
   line-height: 1;
   letter-spacing: -0.03em;
 }
-#back-to-chat {
-  width: auto;
+/* Top of every settings page: back to the list, or from it to the chat. */
+.view-back {
   justify-self: start;
-  margin-top: 6px;
-  border-color: var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin-left: -4px;
+  padding: 0 10px 0 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: 500 13.5px/1 var(--sans);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.view-back:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+.view-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.view-back svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Its own pages (#settings/<page>), one row each. */
+.settings-list {
+  display: grid;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.settings-list a {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.settings-list a:hover {
+  background: var(--raised);
+}
+.settings-list svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-list .icon {
+  display: grid;
+}
+.settings-list small {
+  display: block;
+  color: var(--faint);
+  font-size: 12.5px;
+}
+/* A connected integration: a green dot before its note. */
+.settings-list small.on::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: 1px;
+}
+.settings-list .chevron {
+  color: var(--faint);
+  font-size: 20px;
+  line-height: 1;
 }
 #shortcut-list {
   list-style: none;
@@ -1568,6 +1658,122 @@ body[data-view='shortcuts'] #jump {
   font-size: 11px;
   padding: 1px 7px;
   background: var(--bg);
+}
+
+/* An integration's own page (Settings › Integrations › Slack…). */
+.integration {
+  display: grid;
+  gap: 14px;
+  padding-top: 10px;
+}
+.slack-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 14px 4px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 14px;
+}
+.slack-status b {
+  color: var(--text);
+  font-weight: 600;
+}
+.slack-status a {
+  color: var(--muted);
+}
+.slack-status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.slack-status.on .dot {
+  background: var(--ok);
+}
+.slack-status .warn {
+  flex-basis: 100%;
+  color: var(--warn);
+  font-size: 12.5px;
+}
+.slack-status button {
+  margin-left: auto;
+}
+.slack-form {
+  display: flex;
+  gap: 8px;
+}
+.slack-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 var(--mono);
+  outline: none;
+}
+.slack-form input:focus {
+  border-color: var(--accent);
+}
+.slack-form button,
+.slack-status button {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised-2);
+  color: var(--text);
+  font: 500 13px/1.3 var(--sans);
+}
+.slack-form button {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+  background: color-mix(in oklab, var(--accent) 18%, var(--raised));
+}
+.slack-form button:disabled {
+  opacity: 0.6;
+}
+.slack-rules,
+.slack-help ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.slack-help {
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.slack-help summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 500;
+}
+.slack-help ol {
+  margin-top: 10px;
+}
+.slack-help a {
+  color: var(--accent);
+}
+.slack-help .addr {
+  margin-top: 8px;
+}
+.slack-help .addr code {
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+.view-inner .fine {
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
 }
 
 /* ---------------------------------------------------------- overlays */
@@ -1618,9 +1824,9 @@ body[data-view='shortcuts'] #jump {
     --gutter: 22px;
   }
   #messages,
-  #shortcuts-view,
+  .page-view,
   body.sidebar-collapsed #messages,
-  body.sidebar-collapsed #shortcuts-view {
+  body.sidebar-collapsed .page-view {
     padding-top: calc(64px + env(safe-area-inset-top));
   }
   #messages {
