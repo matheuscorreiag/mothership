@@ -32,7 +32,10 @@ Claude even if the default for new chats changes.
   "Mothership", come first in the sidebar's top row on both pages
   (`setupBrand()` in ui.js), with Share, the status dot and the sidebar's
   toggle at the row's right end — the owner asked for that order. Agent names appear only in the agent/model picker and its default label;
-  they are choices, not page branding. Otherwise no agent names, tab titles are the chat/terminal title, the page is "New
+  they are choices, not page branding. Each agent's real logo (the adapter's
+  `icon`: Claude's mark, OpenAI's for Codex), small and gray, marks which
+  agent a chat uses — beside its time in the sidebar, on the status line's
+  model button and in the picker — at the owner's request. Otherwise no agent names, tab titles are the chat/terminal title, the page is "New
   chat", "Settings" (or one of its pages: "Shortcuts", "Integrations", an
   integration's name) or "Terminal".
 - **Monochrome identity.** The mark (a B-2-like flying wing), the favicon, the
@@ -206,7 +209,8 @@ Register a factory in `lib/agents/index.js`. Each adapter exports `name`,
 `createConnection({ write, emit, sessionId, cwd, systemPrompt, model, effort })`
 returning `receive(raw)`, `send({ text, images })`, `interrupt()` and `close(error)`.
 `lib/agents/process.js` spawns and cleans up the process. Async initialization
-never blocks the chat socket, so Stop works during startup. Optional `discover()`
+never blocks the chat socket, so Stop works during startup. Optional `icon` is a 24×24 SVG
+path (the company's mark; `agentMark()` in app.js draws it). Optional `discover()`
 refreshes the models; `defaultModel` identifies the default model's effort
 choices. `currentDir(sessionId)` can refresh the status line's folder; adapters
 may also emit `{ kind: 'cwd', cwd }`.

@@ -137,6 +137,7 @@ function onMessage(m) {
       state.home = m.home || null;
       state.agents = m.agents || [{ id: 'claude', name: 'Claude Code', models: m.models || [], efforts: m.efforts || [], cwd: m.cwd }];
       if (!state.agents.some((a) => a.id === state.newAgent)) state.newAgent = state.defaultAgent;
+      renderList(); // the logos
       renderStats();
       renderDir();
       break;
@@ -449,7 +450,10 @@ function renderList() {
     item.avatar.classList.toggle('busy', busy);
     item.name.textContent = name;
     const when = ago(c.updated) === 'now' ? 'just now' : `${ago(c.updated)} ago`;
-    item.sub.textContent = busy ? (c.queued ? `working · ${c.queued} queued` : 'working…') : c.unread ? `replied ${when}` : when;
+    item.sub.replaceChildren(
+      ...[agentMark(c.agent)].filter(Boolean),
+      busy ? (c.queued ? `working · ${c.queued} queued` : 'working…') : c.unread ? `replied ${when}` : when,
+    );
     item.sub.classList.toggle('busy', busy || c.unread);
     item.el.classList.toggle('unread', c.unread && !busy);
     item.kbd.textContent = i < 9 ? itemKey(i + 1) : '';
@@ -653,6 +657,22 @@ const settingsOf = (chat) => (chat ? { model: null, effort: null, ...chat.settin
 const agentId = () => current()?.agent || (current() ? state.defaultAgent : state.newAgent) || state.defaultAgent;
 const agentOf = () => state.agents.find((a) => a.id === agentId()) || { models: [], efforts: [], cwd: null };
 const limitsOf = () => state.limits[agentId()];
+
+// The agent's logo, if its adapter has one (a 24×24 path): beside each chat in
+// the sidebar, on the model button and in the picker. Gray, like the app's own marks.
+function agentMark(id) {
+  const icon = state.agents.find((a) => a.id === id)?.icon;
+  if (!icon) return null;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'agent-mark');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', icon);
+  svg.append(path);
+  return svg;
+}
 const modelOption = (id) => agentOf().models.find((m) => m.id === (id || agentOf().defaultModel));
 
 function modelButton(chat) {
@@ -663,6 +683,7 @@ function modelButton(chat) {
   return h(
     'button',
     { type: 'button', class: 'model', title: 'Agent, model and effort', 'data-popover-anchor': '', onclick: (e) => openModelPanel(e.currentTarget) },
+    agentMark(agentId()),
     h('span', { class: 'model-name', textContent: label }),
     h('span', { class: 'model-short', textContent: label.split(' · ')[0] }), // phones: no "· 1M"
     showEffort ? h('span', { class: 'effort', textContent: effort }) : null,
@@ -680,7 +701,7 @@ function renderModelPanel() {
     h('section', { class: 'pick-group' },
       h('h2', { textContent: 'Agent' }),
       h('div', { class: 'segmented' }, ...state.agents.map((a) => h('button', {
-        type: 'button', textContent: a.name, class: a.id === agentId() ? 'on' : '', disabled: Boolean(chat),
+        type: 'button', class: a.id === agentId() ? 'on' : '', disabled: Boolean(chat),
         onclick: () => {
           if (a.id === state.newAgent) return;
           state.newAgent = a.id;
@@ -688,7 +709,7 @@ function renderModelPanel() {
           changeSettings({ model: null, effort: null });
           renderDir();
         },
-      }))),
+      }, agentMark(a.id), a.name))),
       chat ? h('div', { class: 'meter-foot', textContent: 'Choose a different agent in a new chat.' }) : null,
     ),
     h(

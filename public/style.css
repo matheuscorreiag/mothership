@@ -1175,6 +1175,33 @@ button.model:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The agent's logo (app.js agentMark): small and gray. */
+.agent-mark {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  fill: currentColor;
+  stroke: none;
+}
+.side-item .agent-mark {
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  vertical-align: -1px;
+  color: var(--faint); /* gray even while the line is lit (working, replied) */
+  opacity: 0.85;
+}
+.model .agent-mark {
+  width: 11px;
+  height: 11px;
+  opacity: 0.8;
+}
+.segmented .agent-mark {
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
 .model-short {
   display: none;
 }
