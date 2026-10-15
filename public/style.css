@@ -396,6 +396,17 @@ body:not([data-view='chat']) #open-in {
   border-bottom: 1px solid var(--line-soft);
   text-align: left;
 }
+/* .md's "anywhere" would let a table shrink any column to one letter ("4" over
+   "6"): cells break words only when they must, so each column is at least its
+   longest word wide. Links and code (URLs, paths) still wrap anywhere. */
+.md th,
+.md td {
+  overflow-wrap: break-word;
+}
+.md td a,
+.md td code {
+  overflow-wrap: anywhere;
+}
 .md code {
   font-family: var(--mono);
   font-size: 0.78em;
