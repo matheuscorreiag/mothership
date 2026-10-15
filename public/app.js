@@ -376,6 +376,7 @@ const isPinned = (c) => c.pinned != null;
 // The sidebar's list (and ⌘1–9) leaves the archived chats out; they have their own, behind Archived.
 const listed = () => state.chats.filter((c) => !c.archived);
 const archivedChats = () => state.chats.filter((c) => c.archived);
+const shown = () => (state.showArchived ? archivedChats() : listed()); // what the sidebar lists now: ⌘1–9 open those
 const byPlace = (a, b) => (a.pinned ?? Infinity) - (b.pinned ?? Infinity) || b.created - a.created;
 
 // index: its place among the pinned chats; null unpins it.
@@ -459,7 +460,7 @@ function renderList() {
     let item = listItems.get(c.id);
     if (!item) listItems.set(c.id, (item = listItem(c)));
     const i = c.archived ? archived.indexOf(c) : chats.indexOf(c);
-    const keyed = !c.archived && i < 9; // ⌘1–9: the list's first nine
+    const keyed = Boolean(c.archived) === state.showArchived && i < 9; // ⌘1–9: the first nine of what's shown
     const name = c.title || 'New chat';
     const busy = c.status === 'running';
     item.el.classList.toggle('active', state.view === 'chat' && c.id === state.chatId);
@@ -855,10 +856,10 @@ const SHORTCUTS = [
     id: 'switch',
     keys: [itemKey(1), '…', itemKey(9)],
     label: 'Open chat 1–9',
-    note: 'In sidebar order — hold the modifier to see the numbers. The same keys open terminals 1–9',
+    note: 'In sidebar order (the archived ones while they are shown) — hold the modifier to see the numbers. The same keys open terminals 1–9',
     match: (e) => itemNumber(e) > 0,
     run: (e) => {
-      const chat = listed()[itemNumber(e) - 1];
+      const chat = shown()[itemNumber(e) - 1];
       if (!chat) return false;
       go(chat.id);
     },

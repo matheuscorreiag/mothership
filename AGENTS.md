@@ -160,7 +160,8 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   `{ op: 'visibility' }` on connect and on visibilitychange) — at turn end,
   on `open`, or when the page becomes visible. Shared by every device.
 - **Archived** (`setArchived()`; ⋯ › Archive / Unarchive, `PATCH { archived }`):
-  the chat leaves the sidebar's list, its numbers (⌘1–9) and Pinned, and is
+  the chat leaves the sidebar's list, its numbers and Pinned (the archived
+  view numbers its own, and ⌘1–9 open those while it's shown), and is
   never `unread` — so no notice, badge, title count or macOS notification,
   with no client changes (they all read `unread`). The sidebar foot's
   Archived button (shown while there are any) or ⇧⌘A swaps the list for the archived
