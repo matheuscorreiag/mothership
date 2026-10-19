@@ -28,12 +28,6 @@ body.sidebar-collapsed #messages,
 body.sidebar-collapsed .page-view {
   padding-top: calc(64px + env(safe-area-inset-top));
 }
-/* How many are archived, beside the foot's Archived button's name (its key hint takes the right end). */
-.side-count {
-  font: 10.5px/1.6 var(--mono);
-  color: var(--faint);
-}
-
 /* "Open in…" (app.js): top right, in the floating sidebar toggle's look. */
 #open-in {
   position: absolute;

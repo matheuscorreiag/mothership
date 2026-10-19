@@ -490,7 +490,7 @@ function renderList() {
   const showing = state.showArchived;
   $('#chats-label').hidden = nav.hidden = showing;
   $('#archived-label').hidden = $('#archived-list').hidden = !showing;
-  $('#archived-count').textContent = $('#archived-total').textContent = archived.length ? indexLabel(archived.length - 1) : '';
+  $('#archived-count').textContent = archived.length ? indexLabel(archived.length - 1) : '';
   const button = $('#show-archived');
   button.hidden = !archived.length;
   button.classList.toggle('active', showing);
