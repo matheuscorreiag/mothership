@@ -12,12 +12,12 @@ commands, the office VPN, local network) happens on the Mac; other devices
 only render the UI. It is reached over **Tailscale** (`tailscale serve`, tailnet
 only) and runs as a **launchd** user agent.
 
-Two pages, same look:
-
-- `/` — **chat**: one agent process per chat, structured events (streaming
-  text, tool calls, images, context and usage limits) rendered by our own UI.
-- `/terminal/` — **terminals**: tmux-backed shells in the browser, plus a
-  Files panel. "Back to chats" returns to `/`.
+One page, `/` — **chat**: one agent process per chat, structured events
+(streaming text, tool calls, images, context and usage limits) rendered by our
+own UI, and under each chat its own **terminal** (⌘J), a tmux-backed shell.
+There was a separate terminal page (`/terminal/`, with a Files panel and
+editor); the owner had it removed once the chats got their own terminal —
+`/terminal/` now redirects to `/`.
 
 Each chat chooses **Claude Code** (`claude -p` in stream-json mode) or
 **Codex** (`codex app-server`, stdio JSON-RPC v2), using the CLI's local login.
@@ -29,15 +29,15 @@ Claude even if the default for new chats changes.
 ## Product rules (from the owner)
 
 - **Branding only at the top of the sidebar.** The app's mark and name,
-  "Mothership", come first in the sidebar's top row on both pages
+  "Mothership", come first in the sidebar's top row
   (`setupBrand()` in ui.js), with Share, the status dot and the sidebar's
   toggle at the row's right end — the owner asked for that order. Agent names appear only in the agent/model picker and its default label;
   they are choices, not page branding. Each agent's real logo (the adapter's
   `icon`: Claude's mark, OpenAI's for Codex), small and gray, marks which
   agent a chat uses — beside its time in the sidebar, on the status line's
-  model button and in the picker — at the owner's request. Otherwise no agent names, tab titles are the chat/terminal title, the page is "New
-  chat", "Settings" (or one of its pages: "Shortcuts", "Integrations", an
-  integration's name) or "Terminal".
+  model button and in the picker — at the owner's request. Otherwise no agent names, tab titles are the chat's title, the page is "New
+  chat" or "Settings" (or one of its pages: "Shortcuts", "Integrations", an
+  integration's name).
 - **Monochrome identity.** The mark (a B-2-like flying wing), the favicon, the
   menu-bar glyph and the working indicator are black, white and gray,
   geometric, Linear-like — never the chat's accent. The indicator's words
@@ -45,8 +45,8 @@ Claude even if the default for new chats changes.
   "Transmitting", "Arming Bash", "Deploying Bash", "Reading telemetry"…).
 - **English UI**, everywhere (server error messages too). The owner talks to
   agents in Portuguese; the app itself is English.
-- **Always dark.** Only the hue changes: each chat (and terminal) has its own
-  hue; the accent is `oklch(0.78 0.14 <hue>)` and every surface, line and text
+- **Always dark.** Only the hue changes: each chat has its own hue (its
+  terminal takes it too); the accent is `oklch(0.78 0.14 <hue>)` and every surface, line and text
   color in `base.css` is derived from the same `--h` at a fixed low chroma, so
   the page is faintly tinted and any hue reads well. `setHue()` (ui.js) sets it.
 - **Agent-agnostic** UI and chat engine (see Architecture).
@@ -60,7 +60,8 @@ Claude even if the default for new chats changes.
   `--dangerously-skip-permissions` on a machine inside the office network.
 - Minimal chrome: no header bar. The sidebar toggle sits at the right end of
   the sidebar's top row when open and floats top-left when closed; the
-  connection status is just a dot next to it. On this Mac only, a floating
+  connection status is just a dot next to it. ⌘J (or the `>_` button in the
+  status line) opens the chat's terminal under the message box. On this Mac only, a floating
   button at the top right opens the chat's folder in a code editor (a menu of
   the editors `lib/editors.js` finds installed; VS Code for now). The agent's folder, model and usage live in a status line
   under the composer — not the chat's name (the owner dropped it; the sidebar
@@ -76,7 +77,7 @@ Claude even if the default for new chats changes.
 browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680)
                                          ├─ /ws/chat      lib/chat.js ──► agent process per chat (lib/agents/<type>.js)
                                          ├─ /ws/tabs/<id> lib/terminal.js ──► node-pty ⇄ tmux -L mothership
-                                         ├─ /api/*        REST (chats, uploads, local images, tabs, files, slack)
+                                         ├─ /api/*        REST (chats, uploads, local images, tabs, slack)
                                          └─ static        public/ (no build step)
 ```
 
@@ -92,14 +93,13 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
 | `lib/slack.js` | Slack: the owner's token (`/api/slack`), the agents' Slack tools and the rule every send is checked against |
 | `lib/editors.js` | "Open in…": the chat's folder in a code editor on this Mac (`POST /api/open-in`); the editors this Mac has, by bundle id |
 | `lib/mcp-bridge.js` | the stdio MCP server each chat's agent runs: relays `tools/list` / `tools/call` to `/api/agent/tools` with the chat's key |
-| `lib/terminal.js` | tmux tabs + file API (list/read/write/mkdir/rename/trash) + PTY WebSocket |
-| `public/base.css`, `public/ui.js` | **shared by both pages**: fonts, tokens, sidebar, item rows, menus, inline rename, status dot, page tint (`setHue`), accents, `api()`, `h()` |
+| `lib/terminal.js` | the chats' terminals: tmux tabs (list, create, tag with a chat) + PTY WebSocket |
+| `public/base.css`, `public/ui.js` | the page's foundation: fonts, tokens, sidebar, item rows, menus, inline rename, status dot, page tint (`setHue`), accents, `api()`, `h()` |
 | `public/index.html`, `app.js`, `style.css` | chat page (state, WebSocket, usage, settings page, composer) |
 | `public/render.js` | chat items → DOM (markdown, tool cards via `TOOLS`, images, streaming drafts) |
 | `public/loader.js` | the "working" indicator (small, swappable contract) |
-| `public/terminal/*` | terminal page |
-| `public/terminal/editor.js` | the Files editor: CodeMirror 6, loaded on the first open; languages by file name or `#!` line |
-| `bin/mothership` | open the same tmux tabs over SSH |
+| `public/term.js` | a terminal view (xterm.js on a tab's `/ws/tabs/<id>`), loaded on the first ⌘J for the chat's panel |
+| `bin/mothership` | open the same tmux tabs (the chats' terminals included) over SSH |
 | `scripts/launchd.sh` | install / start / stop / restart / uninstall the launchd agent |
 | `macos/` | the macOS app (Swift package, `build.sh`); see below |
 
@@ -140,8 +140,8 @@ browser ──HTTPS──► tailscale serve ──► server.js (127.0.0.1:7680
   messages are processed in order (so "stop" can't overtake "send").
 - Per chat meta (`meta.json`): title, hue, sessionId, model, modelLabel,
   context `{ used, window }`, settings `{ model, effort }` (null = default),
-  dir (where its agent starts — a terminal's "New chat in this folder", which
-  opens `/?dir=<folder>`, or where the agent was at its last `/clear`; absent
+  dir (where its agent starts — `/?dir=<folder>` opens a new chat there — or
+  where the agent was at its last `/clear`; absent
   = `agent.cwd`; every process of a session starts there, as `--resume` finds
   sessions by folder),
   cwd (the agent's folder now; Claude: the last `cwd` stamp in its own
@@ -239,13 +239,23 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
 - Each tab is a tmux session `mothership-<8 hex>` on the dedicated socket
   `tmux -L mothership` (config: `tmux.conf`), running a login shell. Tabs survive
   browser disconnects and can be attached from several devices (`window-size
-  latest`).
-- Titles: user-set `@mothership_title` wins, else the program's terminal title, else
-  the folder name. Tab accent hue is derived from the id (no stored color).
-- Pinned: the session option `@mothership_pinned` (its place, from 1 — tmux's `#{?}`
-  reads 0 as false). `bin/mothership` lists in the same order as the sidebar.
-- The Files API is confined to `config.root` (symlinks resolved); "delete" moves
-  to the macOS Trash.
+  latest`). Tabs from before (the old terminal page, or `bin/mothership new`)
+  belong to no chat: only `bin/mothership` (or `tmux -L mothership`) reaches them.
+- Titles: `@mothership_title` (set by the old terminal page) wins, else the
+  program's terminal title, else the folder name.
+- **The chat's terminal** (⌘J on the chat page, `syncTerm()` in app.js): a
+  panel between the message box and the status line, like an editor's
+  integrated terminal (the owner asked). It's an ordinary tab tagged with the
+  chat's id (session option `@mothership_chat`, `chat` in `/api/tabs`),
+  created in the chat's folder on the first ⌘J and found again by that tag, so
+  every device gets the same one (and `bin/mothership` lists it). Which
+  chats show it, and its height (dragged from its top edge), are per device
+  (localStorage `chat:termOpen` / `chat:termHeight`). The new chat page's
+  ('chat:termDraft') is tagged with the chat its first message makes. ⌘J
+  opens it, goes to it when it's open but the focus is elsewhere, and hides
+  it only from inside it (the owner asked); the buttons just show / hide. The
+  shell exiting closes the panel; deleting the chat closes its tab.
+- A terminal opens only inside `config.root` (symlinks resolved).
 
 ### macOS app
 
@@ -274,8 +284,7 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
   that dispatches the same keydown into the page, so the page's tables stay
   the source of truth. Add new page shortcuts to `mainMenu()` too.
 - **Notifications / badge** come from the app's own `/ws/chat` socket (the
-  same `chats` broadcast), not the page, so they work on the terminal page and
-  with the window closed. That socket never sends `visibility`, so it never
+  same `chats` broadcast), not the page, so they work with the window closed. That socket never sends `visibility`, so it never
   marks a chat read. In front, the page's notice covers it (no banner).
 - Closing the window hides it; external links and `target=_blank` open in the
   default browser; confirm/prompt/file inputs/downloads get native panels.
@@ -297,30 +306,24 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
 
 - Node ≥ 20, ESM, **no build step, no framework**: vanilla JS modules served
   as-is; vendor libs (xterm, marked, DOMPurify) are mapped from `node_modules`
-  in `server.js`. CodeMirror is many packages importing each other by name:
-  the terminal page's import map sends `@codemirror/…`, `@lezer/…` (and a few
-  others) to `/vendor/npm/`, which resolves them like Node (the package's
-  `exports`) and redirects to the real file. New packages there need adding to
-  both the import map and `NPM_PACKAGES`.
+  in `server.js` (`VENDOR`).
 - Prettier-like style: 2 spaces, single quotes, semicolons, ~150 cols. Comments
   explain *why*, sparingly, in the file's existing voice.
-- Anything both pages need goes in `base.css` / `ui.js`, not copied.
 - Sidebar items are rendered **in place, keyed by id** (rebuilding them breaks
   double-click rename and focus). Hold re-renders while an inline rename is
   open, and while an item is being dragged (`pinning.dragging`).
-- **Pinned** (both pages): `setupPinning()` in ui.js builds the section above
+- **Pinned**: `setupPinning()` in ui.js builds the section above
   the page's list and does the dragging — pointer events, not HTML5 drag and
   drop (which phones don't do); a mouse drags past 5px, a finger after holding
   still for 450ms, so a swipe still scrolls. The page renders pinned items
   into `pinning.nav` and gets `onDrop(id, index | null)`; it sends the whole
-  pinned order (`PUT /api/chats/pinned` / `/api/tabs/pinned` `{ ids }`) and
+  pinned order (`PUT /api/chats/pinned` `{ ids }`) and
   applies it locally at once. Lists come sorted from the server — pinned
   first, by place — so ⌘1–9 and the numbers count pinned items first.
 - Confirmations and one-line prompts use `ask()` (ui.js), not `confirm()` /
   `prompt()`: the app's look, Enter / Esc / click outside, focus kept inside,
   page ⌘-shortcuts held while it's open. Delete chat (⇧⌘D and the ⋯ menu) and
-  rename (⇧⌘E) use it; older `confirm()` calls (terminal page, Turn off) can
-  move to it.
+  rename (⇧⌘E) use it; the older `confirm()` in Turn off can move to it.
 - Recent messages (↑ / ↓ / Tab in an empty message box, app.js `remember` /
   `suggest`) come from the open chat's `user` items — the `prompts` sent with
   its last page plus live items — so nothing extra is stored; the suggestion
@@ -334,24 +337,22 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
   missed lazy images loading just above the screen.
 - The sidebar's width is `--side-w` (base.css). Dragging its right edge
   (`setupResize()` in ui.js, desktop only) overrides it on `<html>`, clamped to
-  264–520px (264: the top row — mark, name, Share, dot, toggle — fits whole), and saves it in localStorage `ui:sidebarWidth` for both pages.
+  264–520px (264: the top row — mark, name, Share, dot, toggle — fits whole), and saves it in localStorage `ui:sidebarWidth`.
   Size sidebar content against `--side-w`, never a fixed 272px.
-- Shortcuts are one table per page (chat: `SHORTCUTS` in `app.js`, also drives
-  Settings › Shortcuts). Chat: ⌘1–9, ⌘B, ⌘J, ⌘K, ⌘/, ⇧⌘E rename, ⇧⌘D delete
+- Shortcuts are one table (`SHORTCUTS` in `app.js`, also drives
+  Settings › Shortcuts): ⌘1–9 (the sidebar's chats, `itemNumber()` /
+  `itemKey()` in ui.js), ⌘B, ⌘J terminal panel (the owner wanted an editor's
+  key; the latest reply moved to ⇧⌘J), ⌘K, ⌘/, ⇧⌘E rename, ⇧⌘D delete
   (not ⌘⌫, the Mac's usual delete: in the message box it erases the line;
-  not ⇧⌘R, the browser's hard reload), ⇧⌘P pin / unpin (also on the
-  terminal page), ⇧⌘A archived chats ↔ the list. Terminal: ⌘1–9, ⌘B, ⌘E
-  — off macOS the terminal page uses Ctrl+Shift for B / E because plain
-  Ctrl+B/E belong to the shell. 1–9 (the sidebar's items) are the same keys
-  on both pages, ⌘1–9 / Ctrl+1–9 (`itemNumber()` / `itemKey()` in ui.js) — the
-  owner wants switching to feel the same in chats and terminals. Both: N =
-  new chat / terminal, T = chats ↔ terminal, via
-  `appKey()` / `isAppKey()` in ui.js: plain ⌘N / ⌘T in the macOS app or an
-  installed app window (`standalone`), ⇧⌘N / ⇧⌘T in a browser
-  (Ctrl+Shift+N / T off macOS); either form matches. The owner chose these over
-  ⌃⌘ — no Control or Option combos. Caveat: a plain Chrome tab keeps ⌘N/⌘T/⌘W
-  and ⇧⌘N/⇧⌘T/⇧⌘W (new window/tab, incognito, reopen tab) and pages can't
-  take them; only app windows get them. In the macOS app ⌘W closes (hides) the
+  not ⇧⌘R, the browser's hard reload), ⇧⌘P pin / unpin, ⇧⌘A archived chats ↔
+  the list. Off macOS the modifier is Ctrl, and inside the terminal plain
+  Ctrl+letter goes to the shell (only ⌘J / shifted keys are the page's). N =
+  new chat via `appKey()` / `isAppKey()` in ui.js: plain ⌘N in the macOS app
+  or an installed app window (`standalone`), ⇧⌘N in a browser (Ctrl+Shift+N
+  off macOS); either form matches. The owner chose these over ⌃⌘ — no Control
+  or Option combos. Caveat: a plain Chrome tab keeps ⌘N/⌘T/⌘W and
+  ⇧⌘N/⇧⌘T/⇧⌘W (new window/tab, incognito, reopen tab) and pages can't take
+  them; only app windows get them. In the macOS app ⌘W closes (hides) the
   window.
 - Holding ⌘ (Ctrl off macOS) sets `body.show-keys` (ui.js) and shows key
   hints, styled `.kbd` in base.css: ⌘1–9 on sidebar items, ⌘K on the message
@@ -373,7 +374,7 @@ isolated-server tests; live CLI validation uses scratch data and port 7681.
   lists editors only there, and the button shows only when it has some. The
   folder must be an existing absolute path.
 - The Share popover (the button next to the status dot, `setupShare()` in
-  ui.js, both pages) shows the tailnet name, IPs and serve URL, computed at
+  ui.js) shows the tailnet name, IPs and serve URL, computed at
   runtime — they still never go in tracked files. It flags Tailscale Funnel
   if it's on.
 - Cross-site protection: `Origin`/`Sec-Fetch-Site` checks on API and WebSocket
@@ -427,8 +428,8 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
   can't start a stopped server, so off keeps the process up (idle) and only
   drops the keep-awake assertion, stops agents and closes every socket. While
   off, the API (except `/api/config` and the switches), media and WebSockets
-  answer 503; static files still load, and the pages show the "Turned off"
-  screen (the terminal page sends you to it). The server holds the assertion
+  answer 503; static files still load, and the page shows the "Turned off"
+  screen. The server holds the assertion
   itself (`lib/power.js`), so the launchd plist runs plain `node` — re-run
   `scripts/launchd.sh install` if an old plist still wraps it in `caffeinate`.
 - `scripts/launchd.sh stop` / `start` stop the process entirely (disable +
@@ -481,7 +482,7 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
   (e.g. `black`) might make iOS size the page to the bottom; untried.
 - **xterm.js colors** must be sRGB; convert `oklch()` through a canvas.
 - **Keyboard capture over xterm**: page shortcuts listen on `document` in the
-  capture phase and `stopPropagation()` so the terminal never sees them.
+  capture phase and `stopPropagation()` so the chat's terminal never sees them.
 - Launched from inside another terminal/agent, child processes inherit
   `CLAUDE*`/`CMUX*`/`TMUX*` env vars — `cleanEnv()` strips them. It also
   strips internal `CODEX_*` variables (parent session, sandbox and permission
@@ -497,10 +498,8 @@ MOTHERSHIP_CONFIG=/path/to/test-config.json node server.js
   (`@MainActor @Sendable` handlers) or AppKit never calls them — a clean build
   must show no "nearly matches" warnings.
 - **Typing is never rewritten** (prompts are code and commands): the message
-  box (and the Files editor; CodeMirror sets them itself) carry
-  `autocorrect="off" autocapitalize="off" spellcheck="false"
-  writingsuggestions="false"` — the editor also leaves out auto-closing
-  brackets and tags — and the macOS app registers
+  box carries `autocorrect="off" autocapitalize="off" spellcheck="false"
+  writingsuggestions="false"` and the macOS app registers
   `WebAutomatic{SpellingCorrection,QuoteSubstitution,DashSubstitution,
   TextReplacement}Enabled = false` (main.swift) plus `allowsInlinePredictions
   = false` — otherwise WebKit turns `"x" --y` into `“x” —y`. Each layer alone

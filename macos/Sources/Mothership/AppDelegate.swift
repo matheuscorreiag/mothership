@@ -109,11 +109,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     web.zoom(sender.tag)
   }
 
-  @objc func goTo(_ sender: NSMenuItem) {
-    web.show()
-    web.load(path: sender.representedObject as? String ?? "/")
-  }
-
   // Page shortcuts: the menu item carries the key, the page decides what it does.
   @objc func pageShortcut(_ sender: NSMenuItem) {
     guard let key = sender.representedObject as? [String] else { return }
@@ -193,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     zoomOut.tag = -1
     _ = submenu("View", [
       page("Show / Hide Sidebar", "b", code: "KeyB"),
-      page("Show / Hide Files", "e", code: "KeyE"),
+      page("Show / Hide Terminal", "j", code: "KeyJ"),
       page("Go to Message Box", "k", code: "KeyK"),
       page("Settings", "/", code: "Slash"),
       .separator(),
@@ -204,12 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])
-    let chats = item("Chats", #selector(goTo(_:)), target: self)
-    chats.representedObject = "/"
-    let terminals = item("Terminals", #selector(goTo(_:)), target: self)
-    terminals.representedObject = "/terminal/"
-    var go = [page("Latest Reply", "j", code: "KeyJ"), page("Archived Chats", "a", code: "KeyA", [.command, .shift]), .separator(), page("Chats / Terminal", "t", code: "KeyT"), chats, terminals, .separator()]
-    // ⌘1…⌘9 (the sidebar's items) work without cluttering the menu.
+    var go = [page("Latest Reply", "j", code: "KeyJ", [.command, .shift]), page("Archived Chats", "a", code: "KeyA", [.command, .shift])]
+    // ⌘1…⌘9 (the sidebar's chats) work without cluttering the menu.
     for n in 1...9 {
       let item = page("Item \(n)", "\(n)", code: "Digit\(n)")
       item.isHidden = true

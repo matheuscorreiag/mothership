@@ -1138,6 +1138,114 @@ body.show-keys #composer:not(:focus-within) #input-key {
   font: 10.5px/1 var(--mono);
   color: var(--faint);
 }
+/* The chat's terminal (⌘J, app.js): between the message box and the status
+   line, like an editor's integrated one. Its height is dragged from the top
+   edge and kept per device; the xterm inside refits as it changes. */
+#term-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  min-height: 120px;
+  border-top: 1px solid var(--line);
+  background: var(--code-bg);
+}
+#term-resize {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 1;
+  cursor: row-resize;
+  touch-action: none;
+}
+#term-resize:hover,
+#term-panel.resizing #term-resize {
+  background: linear-gradient(transparent 3px, color-mix(in oklab, var(--accent) 55%, transparent) 3px 5px, transparent 5px);
+}
+.term-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 4px 0 14px;
+}
+.term-head .term-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#term-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#term-panel[data-status='offline'] #term-title::after,
+#term-panel[data-status='connecting'] #term-title::after {
+  content: ' · connecting';
+}
+.term-head .icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+}
+.term-head .icon-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#term-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+#term-body .term {
+  position: absolute;
+  inset: 0 6px 6px 14px;
+}
+#term-body .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+/* Its button in the status line, lit while it's open. */
+#term-toggle {
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border: none;
+  background: none;
+  color: var(--faint);
+}
+#term-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#term-toggle:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+#term-toggle.on {
+  color: var(--accent);
+}
+
 /* The full path, trimmed from the left when it doesn't fit (rtl box). */
 #chat-dir {
   flex: 1 1 auto;

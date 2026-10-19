@@ -1,5 +1,4 @@
-// Shared by the chat (/) and terminal (/terminal/) pages: DOM and API
-// helpers, per-device storage, toasts, the ⋯ menu, inline rename, the
+// The page's building blocks (app.js is the page): DOM and API helpers, per-device storage, toasts, the ⋯ menu, inline rename, the
 // sidebar (collapses on desktop, drawer on phones), the connection dot and
 // per-item accent colors. Styles for all of it: base.css.
 
@@ -15,15 +14,13 @@ export const native = bridge ? (msg) => bridge.postMessage(msg) : null;
 // The installed app's window, or the macOS app. Only there do ⌘N / ⌘T / ⌘W
 // reach the page: in a browser tab Chrome keeps them (new window, tab, close).
 export const standalone = Boolean(native) || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-// N: new chat / terminal; T: chats ↔ terminal. In the macOS app or an
-// installed app window just ⌘N / ⌘T; elsewhere ⇧⌘N / ⇧⌘T (a plain Chrome tab
-// keeps both pairs for itself). Off macOS Ctrl+Shift+N / T: plain Ctrl+N / T
-// are the browser's, and the shell's on the terminal page.
+// N: new chat. In the macOS app or an installed app window just ⌘N;
+// elsewhere ⇧⌘N (a plain Chrome tab keeps ⌘N for itself). Off macOS
+// Ctrl+Shift+N: plain Ctrl+N is the browser's.
 export const appKey = (letter) => (isMac ? `${standalone ? '' : '⇧'}⌘${letter}` : `Ctrl+Shift+${letter}`);
 export const isAppKey = (e, letter) => e.code === `Key${letter}` && !e.altKey && (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && e.shiftKey && !e.metaKey);
-// 1–9: the sidebar's item n — a chat, or a terminal — with the same keys on
-// both pages: ⌘1–9, Ctrl+1–9 off macOS (no shell has a use for Ctrl+digit
-// worth keeping). itemNumber: n for such a keydown, else 0.
+// 1–9: the sidebar's chat n: ⌘1–9, Ctrl+1–9 off macOS (no shell has a use for
+// Ctrl+digit worth keeping). itemNumber: n for such a keydown, else 0.
 export const itemKey = (n) => `${MOD}${n}`;
 export const itemNumber = (e) =>
   /^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey && (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) ? Number(e.code.slice(5)) : 0;
@@ -584,7 +581,7 @@ window.addEventListener('blur', () => document.body.classList.remove('show-keys'
 // ----------------------------------------------------------------- items
 
 // Accents share lightness and chroma (so any hue reads well on the dark UI);
-// only the hue varies per chat or terminal.
+// only the hue varies per chat.
 export const DEFAULT_HUE = 255;
 const hueOr = (hue) => (Number.isFinite(hue) ? hue : DEFAULT_HUE);
 export const accentFor = (hue) => `oklch(0.78 0.14 ${hueOr(hue)})`;

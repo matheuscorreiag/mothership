@@ -1,11 +1,12 @@
 #!/bin/sh
-# Use mothership's tabs from any terminal — e.g. over SSH through Tailscale.
+# Use mothership's terminals from any terminal — e.g. over SSH through Tailscale.
 #
 #   mothership              list the tabs
 #   mothership <n|id>       attach to tab n (as listed) or by id — detach with Ctrl-b d
 #   mothership new [dir]    open a new tab in dir (default: here) and attach
 #
-# Tabs opened here show up in the web UI too, and vice versa.
+# The chats' terminals (⌘J in the web UI) are tabs here too; a tab opened
+# here belongs to no chat, so only shows up here.
 set -eu
 
 DIR=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
@@ -14,7 +15,7 @@ PORT=${PORT:-7680}
 
 t() { tmux -L mothership -f "$DIR/tmux.conf" "$@"; }
 
-# In the web UI's order: pinned first (@mothership_pinned), then the oldest first.
+# Pinned first (@mothership_pinned, from the old terminal page), then the oldest first.
 tabs() {
   t list-sessions -F '#{?#{@mothership_pinned},#{@mothership_pinned},999999}	#{session_created}	#{session_name}	#{?#{@mothership_title},#{@mothership_title},#{pane_title}}	#{pane_current_path}' 2>/dev/null |
     grep '	mothership-' | sort -t '	' -k1,1n -k2,2n | cut -f3-

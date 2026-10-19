@@ -68,6 +68,7 @@ const level = (pct) => (pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '');
 // page. The New chat button previews the next one.
 function applyAccent() {
   setHue(state.chatId ? current()?.hue : state.nextHue);
+  term.view?.setHue(state.chatId ? current()?.hue : state.nextHue); // its terminal follows
   $('#new-chat').style.setProperty('--swatch', accentFor(state.nextHue));
 }
 
@@ -123,6 +124,7 @@ function wsSend(msg) {
 const sendVisibility = () => wsSend({ op: 'visibility', visible: !document.hidden });
 document.addEventListener('visibilitychange', () => {
   document.body.classList.toggle('away', document.hidden); // holds the notice's countdown
+  if (!document.hidden) term.view?.wake();
   if (!document.hidden && state.off) checkPower();
   else if (!document.hidden && ws?.readyState !== WebSocket.OPEN) {
     retries = 0;
@@ -202,6 +204,7 @@ function onMessage(m) {
       local.set('last', m.chatId);
       history.replaceState(null, '', `#${m.chatId}`);
       moveDraft('new', m.chatId);
+      adoptTerm(m.chatId);
       renderHeader();
       renderList();
       break;
@@ -317,6 +320,7 @@ function openChat(id) {
   if (changed) restoreDraft();
   renderHeader();
   renderList();
+  syncTerm();
   state.opening = state.chatId ? { chatId: state.chatId, buffer: [] } : null;
   wsSend({ op: 'open', chatId: state.chatId });
   if (narrow()) setDrawer(false);
@@ -560,7 +564,7 @@ function notify(chat) {
       'div',
       { class: 'notice-foot' },
       others ? h('span', { class: 'notice-more', textContent: `+${others} more unread` }) : null,
-      h('span', { class: 'notice-open' }, 'Open', touch ? null : h('kbd', { textContent: `${MOD}J` })),
+      h('span', { class: 'notice-open' }, 'Open', touch ? null : h('kbd', { textContent: isMac ? '⇧⌘J' : 'Ctrl+Shift+J' })),
     ),
     time,
   );
@@ -675,7 +679,7 @@ const windowPct = (w) => Math.round((w.utilization || 0) * 100);
 function renderStats() {
   const chat = current();
   const ctx = chat?.context;
-  const parts = [];
+  const parts = [termToggle];
   if (state.agents.length) parts.push(modelButton(chat));
   else if (chat?.modelLabel || chat?.model) parts.push(h('span', { class: 'model', textContent: chat.modelLabel || chat.model }));
   if (ctx?.window) parts.push(stat({ label: 'ctx', pct: contextPct(ctx), title: `Context: ${tokens(ctx.used)} / ${tokens(ctx.window)} tokens` }));
@@ -844,6 +848,166 @@ function openUsage(anchor) {
   place(panel, anchor);
 }
 
+// ------------------------------------------------------- terminal panel
+
+// ⌘J: a terminal under the chat, like an editor's integrated one. It's a tmux
+// tab (lib/terminal.js) tagged with the chat's id, opened in the chat's folder
+// the first time and the same on every device (and over SSH: bin/mothership). Which chats show it is this device's ('termOpen'); the new chat page's
+// one ('termDraft') goes to the chat its first message makes.
+const termPanel = $('#term-panel');
+const term = {
+  open: new Set(local.get('termOpen', [])), // chat ids, 'new' for the new chat page
+  view: null, // the terminal shown (term.js)
+  key: null, // whose it is
+  loading: null, // the latest lookup: an older one that lands late is dropped
+};
+const termKey = () => state.chatId || 'new';
+const saveTermOpen = () => local.set('termOpen', [...term.open]);
+const termToggle = h(
+  'button',
+  { id: 'term-toggle', type: 'button', 'aria-label': 'Terminal', onclick: () => toggleTerm() },
+  h('span', { innerHTML: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 4 4-4 4M12 16h7" /></svg>' }).firstChild,
+);
+termToggle.title = `Terminal (${MOD}J)`;
+
+async function findTermTab(key) {
+  const tabs = await api('GET', '/api/tabs');
+  if (key !== 'new') return tabs.find((t) => t.chat === key);
+  return tabs.find((t) => t.id === local.get('termDraft', null) && !t.chat);
+}
+
+function dropTermView() {
+  term.view?.destroy();
+  term.view = null;
+  term.key = null;
+}
+
+// Shows (or hides) the panel for the chat on screen. create: make its terminal
+// if it has none (⌘J); otherwise a chat whose terminal was closed hides it.
+async function syncTerm({ create = false, focus = false } = {}) {
+  const key = termKey();
+  const shown = state.view === 'chat' && term.open.has(key);
+  termPanel.hidden = !shown;
+  termToggle.classList.toggle('on', shown);
+  termToggle.setAttribute('aria-pressed', String(shown));
+  if (term.key && term.key !== key) dropTermView(); // another chat's: its tab stays in tmux
+  if (!shown) return;
+  sizeTerm();
+  if (term.view) {
+    term.view.refit();
+    if (focus) term.view.term.focus();
+    return;
+  }
+  const token = (term.loading = {});
+  const stale = () => term.loading !== token || termKey() !== key || !term.open.has(key);
+  try {
+    let tab = await findTermTab(key);
+    if (!tab && create && !stale()) tab = await api('POST', '/api/tabs', { cwd: chatDir(), ...(key !== 'new' && { chat: key }) });
+    if (stale()) return;
+    if (!tab) return closeTerm(key);
+    if (key === 'new') local.set('termDraft', tab.id);
+    const { termView } = await import('/term.js');
+    if (stale() || term.view) return;
+    term.key = key;
+    term.view = termView({
+      id: tab.id,
+      hue: state.chatId ? current()?.hue : state.nextHue,
+      parent: $('#term-body'),
+      onStatus: (status) => (termPanel.dataset.status = status),
+      // The shell exited (or the tab was closed elsewhere): the panel goes with it.
+      beforeRetry: async () => {
+        const tabs = await api('GET', '/api/tabs').catch(() => null);
+        if (tabs && !tabs.some((t) => t.id === tab.id) && term.view?.id === tab.id) closeTerm(term.key); // its key may have moved (adoptTerm)
+      },
+    });
+    $('#term-title').textContent = tab.title;
+    term.view.refit();
+    term.view.connect();
+    if (focus) term.view.term.focus();
+  } catch (err) {
+    fail(err);
+  }
+}
+
+function closeTerm(key) {
+  term.open.delete(key);
+  saveTermOpen();
+  if (term.key === key) dropTermView();
+  if (key === termKey()) syncTerm();
+}
+
+// The buttons show / hide it. ⌘J (fromKeys) works like an editor's: from
+// elsewhere it opens it or, already open, goes to it; only from inside it
+// does it hide it.
+function toggleTerm({ fromKeys = false } = {}) {
+  if (state.view !== 'chat') return false;
+  const key = termKey();
+  const opening = !term.open.has(key);
+  if (fromKeys && !opening && !termPanel.contains(document.activeElement)) {
+    if (term.view) term.view.term.focus();
+    else syncTerm({ focus: true }); // still loading: focus it when it's there
+    return;
+  }
+  const stick = atBottom; // the thread loses (or gets back) the panel's height
+  if (opening) term.open.add(key);
+  else term.open.delete(key);
+  saveTermOpen();
+  if (!opening && termPanel.contains(document.activeElement) && !touch) input.focus();
+  syncTerm({ create: opening, focus: opening && !touch });
+  if (stick) requestAnimationFrame(scrollToBottom);
+}
+
+// The new chat page's terminal becomes the new chat's.
+function adoptTerm(chatId) {
+  const draft = local.get('termDraft', null);
+  if (!term.open.has('new') || !draft) return;
+  term.open.delete('new');
+  term.open.add(chatId);
+  saveTermOpen();
+  local.set('termDraft', null);
+  if (term.key === 'new') term.key = chatId;
+  api('PATCH', `/api/tabs/${draft}`, { chat: chatId }).catch(fail);
+}
+
+// Height: dragged from its top edge, kept per device, never so tall the thread
+// and the message box lose their room.
+function sizeTerm(px = local.get('termHeight', null)) {
+  const room = $('#main').clientHeight - 240;
+  const height = Math.max(120, Math.min(px ?? Math.round(innerHeight * 0.38), room));
+  termPanel.style.height = `${height}px`;
+  return height;
+}
+$('#term-resize').addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const handle = e.currentTarget;
+  handle.setPointerCapture(e.pointerId);
+  termPanel.classList.add('resizing');
+  const startY = e.clientY;
+  const start = termPanel.offsetHeight;
+  let height = start;
+  const move = (ev) => (height = sizeTerm(start + startY - ev.clientY));
+  const up = () => {
+    handle.removeEventListener('pointermove', move);
+    termPanel.classList.remove('resizing');
+    local.set('termHeight', height);
+    if (atBottom) scrollToBottom();
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', up, { once: true });
+  handle.addEventListener('pointercancel', up, { once: true });
+});
+// Refit once the size settles, not on every frame (each fit resizes the tmux session).
+let termFit;
+new ResizeObserver(() => {
+  clearTimeout(termFit);
+  termFit = setTimeout(() => term.view?.refit(), 80);
+}).observe($('#term-body'));
+addEventListener('resize', () => !termPanel.hidden && sizeTerm());
+
+$('#term-hide').addEventListener('click', () => toggleTerm());
+$('#term-hide').title = `Hide (${MOD}J)`;
+
 // ------------------------------------------------------------- shortcuts
 
 // One table drives the key handling and the Shortcuts screen. `match` gets
@@ -856,7 +1020,7 @@ const SHORTCUTS = [
     id: 'switch',
     keys: [itemKey(1), '…', itemKey(9)],
     label: 'Open chat 1–9',
-    note: 'In sidebar order (the archived ones while they are shown) — hold the modifier to see the numbers. The same keys open terminals 1–9',
+    note: 'In sidebar order (the archived ones while they are shown) — hold the modifier to see the numbers',
     match: (e) => itemNumber(e) > 0,
     run: (e) => {
       const chat = shown()[itemNumber(e) - 1];
@@ -881,11 +1045,19 @@ const SHORTCUTS = [
   },
   {
     id: 'reply',
-    keys: [`${MOD}J`],
+    keys: [isMac ? '⇧⌘J' : 'Ctrl+Shift+J'],
     label: 'Open the latest reply',
     note: 'The chat in the notice, or the newest unread one',
-    match: (e) => mod(e) && !e.shiftKey && e.code === 'KeyJ',
+    match: (e) => shiftMod(e) && e.code === 'KeyJ',
     run: () => openReply(),
+  },
+  {
+    id: 'term',
+    keys: [`${MOD}J`],
+    label: 'Terminal',
+    note: "Opens this chat's own, under it, in its folder; open, goes to it; from inside it, hides it. Drag its top edge to resize",
+    match: (e) => mod(e) && !e.shiftKey && e.code === 'KeyJ',
+    run: () => toggleTerm({ fromKeys: true }),
   },
   {
     id: 'input',
@@ -893,14 +1065,6 @@ const SHORTCUTS = [
     label: 'Go to the message box',
     match: (e) => mod(e) && !e.shiftKey && e.code === 'KeyK',
     run: () => focusInput(),
-  },
-  {
-    id: 'terminal',
-    keys: [appKey('T')],
-    label: 'Open the terminal',
-    note: 'The same keys bring you back to the chats',
-    match: (e) => isAppKey(e, 'T'),
-    run: () => (location.href = '/terminal/'),
   },
   {
     id: 'rename',
@@ -953,8 +1117,12 @@ document.addEventListener(
   'keydown',
   (e) => {
     const s = SHORTCUTS.find((x) => x.match?.(e));
-    if (!s || e.isComposing || s.run(e) === false) return;
+    if (!s || e.isComposing) return;
+    // Off macOS the modifier is Ctrl: in the terminal, plain Ctrl+letter is the shell's.
+    if (!isMac && !e.shiftKey && s.id !== 'term' && e.target.closest?.('#term-panel')) return;
+    if (s.run(e) === false) return;
     e.preventDefault();
+    e.stopPropagation(); // never reaches the terminal
   },
   true,
 );
@@ -962,7 +1130,6 @@ document.addEventListener(
 $('#new-chat-hint').textContent = appKey('N');
 $('#settings-hint').textContent = `${MOD}/`;
 $('#archived-hint').textContent = isMac ? '⇧⌘A' : 'Ctrl+Shift+A';
-$('#terminal-hint').textContent = appKey('T');
 $('#input-key').textContent = `${MOD}K`;
 
 // Settings › Shortcuts: what each one does and its keys.
@@ -1570,8 +1737,7 @@ document.addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------------- boot
 
-// /?dir=<folder> (the terminal page's "New chat in this folder"): a new chat
-// that starts there. Otherwise, opening the app without a link resumes the last chat.
+// /?dir=<folder>: a new chat that starts there. Otherwise, opening the app without a link resumes the last chat.
 const startDir = new URLSearchParams(location.search).get('dir');
 if (startDir) {
   state.newDir = startDir;

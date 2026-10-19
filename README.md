@@ -44,8 +44,7 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
   (or ⇧⌘P, or its ⋯ menu); pinned chats stay there, in the order you drop
   them, numbered first. Drag one back down to unpin it. On a phone, hold a
   chat for a moment, then drag. Pins are shared by every device.
-  **Width**: drag the sidebar's right edge (double-click it for the default);
-  both pages share it.
+  **Width**: drag the sidebar's right edge (double-click it for the default).
 - **Status line under the message box** — the **folder the chat's agent is
   working in** (it follows a `cd`; a new chat shows where it will start; a
   long path is trimmed from the left), the model, this chat's **context** and
@@ -63,11 +62,17 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
   remembered on that device for the next new chats.
 - **New replies** — a chat whose turn ended while no device had it open (and
   visible) is marked unread: a dot and "replied …" in the sidebar, a count on
-  the sidebar button and in the tab title, the installed app's badge, a count
-  on "Back to chats" in the terminal page, and a notice with the start of the
+  the sidebar button and in the tab title, the installed app's badge, and a
+  notice with the start of the
   reply that stays 30 s (paused while hovered or while the page is in the
-  background) — tap it or press ⌘J to open the chat.
+  background) — tap it or press ⇧⌘J to open the chat.
   Opening the chat marks it read on every device.
+- **Terminal under the chat** (⌘J, or the `>_` button in the status line) —
+  the chat's own terminal, opened in its folder, below the message box like an
+  editor's integrated terminal. Drag its top edge to resize. With it open,
+  ⌘J from the message box goes to it, and ⌘J inside it hides it. It keeps
+  running when the browser closes and is the same on every device (and over
+  SSH: `bin/mothership`); `exit` closes it, and deleting the chat closes it too.
 - **Archive** (a chat's ⋯ menu) — hides the chat from the list and silences it:
   no unread dot, notice, badge or notification, whatever it does. The
   sidebar's Archived button (⇧⌘A) lists archived chats, to open or unarchive
@@ -105,12 +110,12 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
   | ⌘1 … ⌘9 | open chat 1–9 |
   | ⌘N (app) / ⇧⌘N (browser) | new chat |
   | ⌘B | show / hide the sidebar |
-  | ⌘J | open the latest reply (the notice's chat, or the newest unread) |
+  | ⌘J | the chat's terminal: open it / go to it / hide it (from inside) |
+  | ⇧⌘J | open the latest reply (the notice's chat, or the newest unread) |
   | ⌘K | go to the message box |
   | ⇧⌘E | rename this chat (or double-click it in the sidebar) |
   | ⇧⌘P | pin / unpin this chat (or drag it to / from Pinned) |
   | ⇧⌘D | delete this chat (asks first) |
-  | ⌘T (app) / ⇧⌘T (browser) | open the terminal (the same keys come back) |
   | ⌘/ | Settings |
   | Enter / ⇧Enter | send / new line |
   | ↑ / ↓ (empty box) | suggest one of this chat's last 5 messages (faded; the box stays empty) |
@@ -119,9 +124,8 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
 
   "App" is the macOS app or the web app installed from the browser (Chrome:
   "Install"; Safari: "Add to Dock"): there every key reaches the page. In a
-  plain Chrome tab the browser keeps ⌘1…⌘9, and both ⌘N/⌘T and ⇧⌘N/⇧⌘T (new
-  window, new tab, incognito, reopen tab). Off macOS: Ctrl instead of ⌘, and
-  Ctrl+Shift+N / Ctrl+Shift+T.
+  plain Chrome tab the browser keeps ⌘1…⌘9, and both ⌘N and ⇧⌘N (new
+  window, incognito). Off macOS: Ctrl instead of ⌘, and Ctrl+Shift+N.
 - The thread reads like a log: numbered, timestamped prompts, and the reply
   hanging from each on a rail where tool calls (Bash, Read, Edit with a diff,
   todo lists…) are one-line entries that open on click. Streaming Markdown,
@@ -137,12 +141,12 @@ phone / laptop ──(Tailscale, HTTPS)──► tailscale serve ──► mothe
 | --- | --- |
 | `public/loader.js` | the "Thinking… / Using Bash…" indicator (contract at the top) |
 | `public/render.js` | how messages, tools (`TOOLS`) and images are drawn |
-| `public/base.css` | shared by both pages: fonts, color tokens (all derived from the hue `--h`), sidebar, item rows, menus |
+| `public/base.css` | fonts, color tokens (all derived from the hue `--h`), sidebar, item rows, menus |
 | `public/fonts/` | Instrument Sans and Martian Mono (OFL, licenses alongside) |
-| `public/ui.js` | shared by both pages: sidebar, menus, inline rename, status dot, page tint and accents |
+| `public/ui.js` | sidebar, menus, inline rename, status dot, page tint and accents |
 | `public/style.css` | chat page layout, thread rail, composer, status line, loader animations |
 | `public/app.js` | chat state, WebSocket, usage, shortcuts, composer |
-| `public/terminal/*` | terminal page (tabs, Files panel, phone key strip) |
+| `public/term.js` | the chat's terminal (xterm.js on a tmux tab) |
 | `lib/chat.js` | processes, queue, persistence, item format, accent picking |
 | `lib/agents/*.js` | one adapter per agent (contract at the top of `claude.js`) |
 
@@ -174,7 +178,7 @@ documented in `claude.js`. Optional `discover`, `models`, `efforts`, and
 | `agent.idleMinutes` | `30` | stop idle processes (sessions resume later) |
 | `agent.appendSystemPrompt` | (text about the UI) | extra instructions; `""` turns it off |
 | `agents.claude`, `agents.codex` | `{}` | optional per-provider overrides of command, args, model, effort, cwd and idleMinutes |
-| `root`, `workdir`, `shell` | | used by the terminal part |
+| `root`, `shell` | `~`, `$SHELL` | the chats' terminals: they open only inside `root`, running `shell` |
 
 Install and sign in to the CLIs you want to use on this Mac (`claude` and/or
 `codex login`). Codex requires a CLI with the App Server v2 protocol (tested
@@ -268,26 +272,9 @@ on the server's Mac.
   anything, is blocked in the chats; disconnect it at claude.ai if Slack
   should only be reachable from here.
 
-## Terminal (at `/terminal/`)
+## Terminals over SSH
 
-Same layout as the chat page: tmux-backed terminals listed in the sidebar
-(each with its own accent), a **Files** panel on the right (browse, edit with
-syntax highlighting and find / replace, upload, download, rename, move to
-Trash, type a path into the terminal), **New chat in this folder** (a chat
-whose agent starts in the open terminal's folder) and **Back to chats** to
-return to the main view. Terminals keep running when the
-browser closes and can be opened from several devices at once; `bin/mothership`
-opens the same ones over SSH (`mothership`, `mothership 2`, `mothership new`). Terminals pin like
-chats: drag them to **Pinned**, ⇧⌘P or the ⋯ menu.
-
-| Keys | Action |
-| --- | --- |
-| ⌘1 … ⌘9 | switch terminal |
-| ⌘N (app) / ⇧⌘N (browser) | new terminal (in the folder open in Files) |
-| ⌘B | show / hide the sidebar |
-| ⌘E | show / hide Files |
-| ⇧⌘P | pin / unpin this terminal |
-| ⌘T (app) / ⇧⌘T (browser) | back to the chats |
-
-Off macOS they use Ctrl+Shift, since plain Ctrl+B / Ctrl+E / Ctrl+N belong to
-the shell.
+The chats' terminals are tmux sessions, so `bin/mothership` opens the same
+ones from any terminal, e.g. over SSH through Tailscale (`mothership` lists
+them, `mothership 2` attaches, `mothership new` opens one of its own). Ones
+opened that way belong to no chat, so they only show up there.

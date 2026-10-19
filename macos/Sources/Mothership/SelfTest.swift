@@ -157,15 +157,9 @@
       press("1", 18)
       let first = (try? await web.webView.callAsyncJavaScript("return (await (await fetch('/api/chats')).json())[0]?.id || ''", contentWorld: .page)) as? String ?? ""
       check("⌘1 opens the first chat", await until(1.5) { await self.text("location.hash.slice(1)") == first && !first.isEmpty }, first)
-      check("app hints are plain ⌘N / ⌘T", await text("document.querySelector('#new-chat-hint').textContent + ' ' + document.querySelector('#terminal-hint').textContent") == "⌘N ⌘T")
+      check("app hint is plain ⌘N", await text("document.querySelector('#new-chat-hint').textContent") == "⌘N")
       press("n", 45)
       check("⌘N starts a new chat", await until(1.5) { await self.text("location.hash") == "" })
-      press("t", 17)
-      check("⌘T opens the terminal", await until(3) { await self.text("location.pathname") == "/terminal/" })
-      _ = await until(3) { await self.text("document.readyState") == "complete" }
-      await wait(0.8)
-      press("t", 17)
-      check("⌘T goes back to the chats", await until(3) { await self.text("location.pathname") == "/" })
       _ = await until(5) { await self.text("document.querySelector('#conn')?.dataset.state") == "online" }
 
       // Rename / delete without the mouse: a dialog first, Esc backs out.
@@ -244,20 +238,6 @@
       check("page Turn on brings it back", await until(5) { await self.text("document.querySelector('#conn')?.dataset.state") == "online" })
       await withCheckedContinuation { done in Server.shared.refresh { done.resume() } }
       check("menu bar follows the page's switch", Server.shared.status.on)
-
-      // Terminal page: ⌘E is the Files panel.
-      web.load(path: "/terminal/")
-      _ = await until(5) {
-        let path = await self.text("location.pathname")
-        let ready = await self.text("document.readyState")
-        return path == "/terminal/" && ready == "complete"
-      }
-      await wait(1)
-      let files = await flag("document.body.classList.contains('files-open')")
-      press("e", 14)
-      check("⌘E toggles Files on the terminal page", await until(1.5) { await self.flag("document.body.classList.contains('files-open')") != files })
-      press("e", 14)
-      await snapshot("terminal")
 
       // Nothing listening: the native "Not running" page.
       Prefs.testServerURL = URL(string: "http://127.0.0.1:7699")

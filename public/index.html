@@ -12,6 +12,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preload" href="/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/martian-mono.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/vendor/xterm.css" />
     <link rel="stylesheet" href="/base.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
@@ -45,11 +46,6 @@
           <span>Settings</span>
           <kbd class="hint" id="settings-hint"></kbd>
         </button>
-        <a class="side-btn" href="/terminal/">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></svg>
-          <span>Terminal</span>
-          <kbd class="hint" id="terminal-hint"></kbd>
-        </a>
         <button id="turn-off" class="side-btn" type="button" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8" /><path d="M6.3 6.8a8 8 0 1 0 11.4 0" /></svg>
           <span>Turn off</span>
@@ -147,6 +143,17 @@
             </button>
           </form>
         </div>
+        <section id="term-panel" aria-label="Terminal" hidden>
+          <div id="term-resize" title="Drag to resize"></div>
+          <div class="term-head">
+            <svg class="term-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 4 4-4 4M12 16h7" /></svg>
+            <span id="term-title" class="label">Terminal</span>
+            <button id="term-hide" class="icon-btn" type="button" aria-label="Hide the terminal">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+          </div>
+          <div id="term-body"></div>
+        </section>
         <div id="statusline">
           <div id="chat-dir"></div>
           <div id="chat-stats"></div>

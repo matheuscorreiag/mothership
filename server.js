@@ -1,11 +1,11 @@
-// mothership — a web UI for the coding agent running on this Mac (/), plus the
-// terminal tabs and file browser (/terminal/). Listens on localhost only;
+// mothership — a web UI for the coding agent running on this Mac (/), with a
+// terminal under each chat. Listens on localhost only;
 // reach it from other devices with `tailscale serve` (see README).
 // Settings: config.json.
 //
 //   lib/chat.js      agent conversations over WebSocket (/ws/chat)
 //   lib/agents/      adapters per agent (claude.js)
-//   lib/terminal.js  tmux-backed terminal tabs (/ws/tabs/<id>) and files API
+//   lib/terminal.js  the chats' tmux-backed terminals (/api/tabs, /ws/tabs/<id>)
 //   lib/slack.js     Slack for the agents (their tools) and its token (/api/slack)
 //   lib/editors.js   open a chat's folder in a code editor on this Mac (/api/open-in)
 //   lib/config.js    settings and shared helpers
@@ -13,10 +13,9 @@
 import http from 'node:http';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { APP_DIR, HOME, HOSTNAME, config, authorized, fromThisMac, sameOrigin, rejectUpgrade, HttpError, sendJson } from './lib/config.js';
 import { loadChats, handleChatApi, handleChatUpgrade, serveMedia, stopChats, pauseChats } from './lib/chat.js';
-import { handleTerminalApi, handleTerminalUpgrade, terminalInfo, detachTerminals } from './lib/terminal.js';
+import { handleTerminalApi, handleTerminalUpgrade, detachTerminals } from './lib/terminal.js';
 import { power, setPower, keepAwake } from './lib/power.js';
 import { networkInfo } from './lib/network.js';
 import { loadSlack, handleSlackApi } from './lib/slack.js';
@@ -31,10 +30,6 @@ const VENDOR = {
   '/vendor/marked.mjs': 'node_modules/marked/lib/marked.esm.js',
   '/vendor/purify.mjs': 'node_modules/dompurify/dist/purify.es.mjs',
 };
-// CodeMirror (the Files editor) is many small modules that import each other
-// by package name. The terminal page's import map points those names here.
-const NPM = /^\/vendor\/npm\/((?:@codemirror\/|@lezer\/|@marijn\/)?[\w.-]+)(\/[\w./-]*)?$/;
-const NPM_PACKAGES = /^(@codemirror\/|@lezer\/|@marijn\/|crelt$|style-mod$|w3c-keyname$)/;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -60,43 +55,13 @@ async function serveStatic(res, pathname) {
   res.end(body);
 }
 
-// A package name (or a path in it) resolves like Node would, through the
-// package's "exports", and redirects to the real file so its own relative
-// imports work. The files themselves only change with `npm install`.
-async function serveNpm(req, res, pathname) {
-  const [, pkg, sub = ''] = pathname.match(NPM) || [];
-  if (!pkg || !NPM_PACKAGES.test(pkg)) throw new HttpError(404, 'not found');
-  const dir = path.join(APP_DIR, 'node_modules', pkg);
-  let file = path.join(dir, path.normalize(sub));
-  if (!file.startsWith(dir + path.sep) || !file.endsWith('.js')) {
-    try {
-      file = fileURLToPath(import.meta.resolve(pkg + sub));
-    } catch {
-      throw new HttpError(404, 'not found');
-    }
-    if (!file.startsWith(dir + path.sep)) throw new HttpError(404, 'not found');
-    res.writeHead(302, { location: `/vendor/npm/${pkg}/${path.relative(dir, file)}`, 'cache-control': 'no-cache' });
-    return res.end();
-  }
-  const st = await fsp.stat(file).catch(() => {
-    throw new HttpError(404, 'not found');
-  });
-  const etag = `"${st.size}-${Math.round(st.mtimeMs)}"`;
-  if (req.headers['if-none-match'] === etag) {
-    res.writeHead(304, { etag });
-    return res.end();
-  }
-  res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-cache', etag });
-  res.end(await fsp.readFile(file));
-}
-
 async function handleApi(req, res, url) {
   // A custom header can't be sent cross-site without a CORS preflight, which
   // this server never grants.
   if (req.method !== 'GET' && req.headers['x-mothership'] !== '1') throw new HttpError(403, 'missing X-Mothership header');
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const thisMac = fromThisMac(req);
-    return sendJson(res, 200, { ...terminalInfo, home: HOME, hostname: HOSTNAME, thisMac, editors: thisMac ? await editors() : [], on: power.on });
+    return sendJson(res, 200, { home: HOME, hostname: HOSTNAME, thisMac, editors: thisMac ? await editors() : [], on: power.on });
   }
   // On / off (lib/power.js): only from a browser on this Mac.
   if ((url.pathname === '/api/turn-off' || url.pathname === '/api/turn-on') && req.method === 'POST') {
@@ -130,11 +95,15 @@ const server = http.createServer(async (req, res) => {
     if ((isApi || isMedia) && !sameOrigin(req)) throw new HttpError(403, 'origin not allowed');
     if (isApi) await handleApi(req, res, url);
     else if (req.method !== 'GET') throw new HttpError(405, 'method not allowed');
+    // The terminal page is gone (each chat has its own, ⌘J): old links and app menus land on the chats.
+    else if (url.pathname === '/terminal' || url.pathname.startsWith('/terminal/')) {
+      res.writeHead(302, { location: '/' });
+      res.end();
+    }
     else if (isMedia) {
       if (!power.on) throw new HttpError(503, 'turned off');
       await serveMedia(res, url);
     }
-    else if (url.pathname.startsWith('/vendor/npm/')) await serveNpm(req, res, url.pathname);
     else await serveStatic(res, url.pathname);
   } catch (err) {
     if (!(err instanceof HttpError)) console.error(req.method, url.pathname, err);

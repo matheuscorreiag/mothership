@@ -1,7 +1,6 @@
-/* Shared by the chat (/) and terminal (/terminal/) pages: fonts, color
-   tokens, the sidebar (toggle, status dot, buttons, item rows, collapse
-   animation, phone drawer), menus and toasts. Page-specific styles live next
-   to each page. */
+/* The page's foundation: fonts, color tokens, the sidebar (toggle, status
+   dot, buttons, item rows, collapse animation, phone drawer), menus and
+   toasts. The chat page's own styles are in style.css. */
 
 @font-face {
   font-family: 'Instrument Sans';
@@ -27,7 +26,7 @@
   font-display: swap;
 }
 
-/* The whole page is tinted by the open chat's (or terminal's) hue: `--h` is
+/* The whole page is tinted by the open chat's hue: `--h` is
    set from JS (ui.js setHue). Surfaces keep a low chroma so it's always dark
    and only faintly colored; the accent keeps the fixed lightness/chroma. */
 :root {
@@ -162,7 +161,7 @@ kbd {
   background: var(--raised);
 }
 
-/* Small uppercase mono labels used across both pages. */
+/* Small uppercase mono labels. */
 .label {
   font: 500 10px/1 var(--mono);
   letter-spacing: 0.14em;
@@ -226,7 +225,7 @@ body.resizing {
   min-width: 0; /* if it's ever short of room, the name gives way, not the buttons */
 }
 /* The app's mark and name (ui.js setupBrand), in grays like the icon; the mark
-   lines up with the New chat / terminal button's icon below. */
+   lines up with the New chat button's icon below. */
 .brand {
   display: flex;
   align-items: center;
@@ -258,7 +257,7 @@ body.resizing {
   text-overflow: ellipsis;
 }
 
-/* Sidebar buttons: New chat / terminal, Shortcuts, Files, Terminal / Chats */
+/* Sidebar buttons: New chat, Archived, Settings, Turn off */
 .side-btn {
   display: flex;
   align-items: center;
@@ -404,7 +403,7 @@ body.resizing {
   border-radius: 0 3px 3px 0;
   background: var(--item-accent);
 }
-/* Each item's accent (a chat's or a terminal's) colors its index number,
+/* Each item's accent (its chat's) colors its index number,
    which is also its ⌘ shortcut. */
 .side-item .avatar {
   flex-shrink: 0;
